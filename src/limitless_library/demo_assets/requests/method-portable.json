@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "limitless.query/0.1",
+  "taskKind": "redact-structured-agent-event",
+  "receiver": {
+    "constraints": ["language:javascript", "data:json-like", "execution:local"],
+    "toolchain": {"node": "24"}
+  },
+  "requestedUse": "evaluation",
+  "tenantScope": "public",
+  "evaluatedAt": "2026-08-11T12:00:00Z"
+}

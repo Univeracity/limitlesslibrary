@@ -1,0 +1,59 @@
+{
+  "capsuleDigest": "sha256:864eb6a28599627510fe89c23263684b82f2950c980b5ff3027261afee565a65",
+  "id": "capsule:structured-event-redaction",
+  "license": "Apache-2.0",
+  "offers": [
+    {
+      "compatibility": {
+        "constraints": ["language:python", "data:json-like"],
+        "toolchain": {"python": ["3.11", "3.12", "3.13"]}
+      },
+      "files": [
+        {
+          "digest": "sha256:75678859485adb0ec036d28e4e3584b09788724cf5e0d64ceed3da3d94147de2",
+          "source": "payload/structured_redaction.py"
+        }
+      ],
+      "id": "offer:structured-redaction-python-exact",
+      "kind": "exact-component",
+      "method": null,
+      "policy": {
+        "allowedUses": ["development", "evaluation"],
+        "state": "active",
+        "tenantScopes": ["public"]
+      },
+      "priority": 100,
+      "taskKind": "redact-structured-agent-event"
+    },
+    {
+      "compatibility": {"constraints": ["data:json-like"], "toolchain": {}},
+      "files": null,
+      "id": "offer:structured-redaction-portable-method",
+      "kind": "method",
+      "method": {
+        "steps": [
+          "Define an explicit case-insensitive set of sensitive field names and one stable replacement marker.",
+          "Recursively copy mappings and arrays; replace values whose field name is sensitive, and preserve all other scalar values.",
+          "Reject non-mapping roots and non-string mapping keys rather than guessing how to serialize them.",
+          "Document that field-name redaction does not detect secrets embedded in free text."
+        ],
+        "summary": "Create a non-mutating, field-name redactor for JSON-like agent audit events.",
+        "verification": [
+          "Sensitive fields are redacted at the root and inside nested mappings and arrays.",
+          "Non-sensitive fields are unchanged and the input object is not mutated.",
+          "Invalid root values and mapping keys fail explicitly."
+        ]
+      },
+      "policy": {
+        "allowedUses": ["development", "evaluation"],
+        "state": "active",
+        "tenantScopes": ["public"]
+      },
+      "priority": 50,
+      "taskKind": "redact-structured-agent-event"
+    }
+  ],
+  "schemaVersion": "limitless.capsule/0.1",
+  "title": "Structured agent-event redaction",
+  "version": "0.1.0"
+}

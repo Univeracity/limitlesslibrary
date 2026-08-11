@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .catalog import CatalogError, LocalCatalog, seal_capsule
 from .contracts import ContractError, load_json, write_new_json
+from .demo import DemoError, format_demo, run_demo
 from .installer import AdoptionError, adopt_exact_component, seal_recipe, validate_recipe
 
 
@@ -19,6 +20,10 @@ def _print(value: dict[str, object]) -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    demo = subparsers.add_parser("demo", help="run the complete verified-reuse lifecycle locally")
+    demo.add_argument("--workspace", type=Path, help="new directory in which to retain all demo evidence")
+    demo.add_argument("--format", choices=("text", "json"), default="text")
 
     validate_catalog = subparsers.add_parser("validate-catalog", help="validate every capsule and exact file")
     validate_catalog.add_argument("--catalog", type=Path, required=True)
@@ -55,7 +60,13 @@ def _parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = _parser().parse_args()
     try:
-        if args.command == "validate-catalog":
+        if args.command == "demo":
+            result = run_demo(args.workspace)
+            if args.format == "json":
+                _print(result)
+            else:
+                print(format_demo(result))
+        elif args.command == "validate-catalog":
             catalog = LocalCatalog(args.catalog)
             _print({"status": "valid", "catalogDigest": catalog.catalog_digest})
         elif args.command == "query":
@@ -81,7 +92,7 @@ def main() -> None:
                 receipt_path=args.receipt,
             )
             _print(receipt)
-    except (AdoptionError, CatalogError, ContractError) as error:
+    except (AdoptionError, CatalogError, ContractError, DemoError) as error:
         print(f"limitless: {error}", file=sys.stderr)
         raise SystemExit(2) from error
 

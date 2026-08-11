@@ -11,10 +11,10 @@ overwriting receiver files, runs the digest-bound receiver checks in a
 no-network/read-only Bubblewrap sandbox, proves runtime invocation, and writes
 an append-only adoption receipt.
 
-This is a pre-alpha reference implementation. It is intentionally local,
-single-operator, and Linux-only for contained verification. It is not a hosted
-registry, remote trust system, package manager, or claim that technical
-integration equals product adoption.
+This is a pre-alpha reference implementation and the inspectable foundation of
+the Limitless product. It is intentionally local, single-operator, and
+Linux-only for contained verification. It is not a remote trust system,
+package manager, or claim that technical integration equals product adoption.
 
 ## What is open here
 
@@ -24,12 +24,12 @@ integration equals product adoption.
 - Exact-byte, no-overwrite installation with rollback on failure.
 - Receiver-owned adherence and obligation verification under Bubblewrap.
 - Python embedding and bounded stdio MCP 2026-07-28 connector surfaces.
-- Authoring/sealing commands, a conformance fixture, and tests.
+- Authoring/sealing commands, a meaningful one-command demo, a conformance
+  fixture, and tests.
 
-The intended commercial boundary—hosted private catalogs, organization
-identity and policy, managed verification, enterprise connectors, and
-organization-wide reuse intelligence—is described in
-[Open-source boundary](docs/OPEN-SOURCE-BOUNDARY.md).
+The local implementation is useful without an account, network connection,
+model API, or Limitless-operated service. Its trust and foundation commitments
+are described in [Open-source foundation](docs/OPEN-SOURCE-FOUNDATION.md).
 
 ## Requirements
 
@@ -40,17 +40,42 @@ There is deliberately no unsandboxed verifier fallback. Querying and method
 selection work without Bubblewrap; exact adoption fails closed if containment
 is unavailable.
 
-## Install from this checkout
+On Debian or Ubuntu, install Bubblewrap with `sudo apt-get install bubblewrap`.
+
+## Install and run
 
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install -e '.[dev]'
+python -m pip install .
+limitless demo
 ```
 
-## Ten-minute local proof
+The demo performs useful work on a structured agent audit event: it installs a
+field-name redaction component and returns a sanitized copy while preserving
+non-sensitive data. It then shows all three safe outcomes:
 
-Validate the public example catalog and observe all three outcomes:
+- exact component selection, no-overwrite installation, receiver-owned
+  functional checks, and proof that receiver code invoked the supplied bytes;
+- source-free method guidance when exact Python bytes do not fit a JavaScript
+  receiver; and
+- non-disclosing abstention for an unrelated task.
+
+Retain every decision, the installed component, and the adoption receipt for
+inspection:
+
+```bash
+limitless demo --workspace ./limitless-demo
+```
+
+The command refuses to reuse an existing workspace. The redactor is
+deliberately narrow: it protects configured structured field names and is not
+a general scanner for secrets hidden in free text. See [Local demo](docs/LOCAL-DEMO.md)
+for the evidence map and manual commands.
+
+## Manual conformance proof
+
+The smaller `examples/` fixture exposes each primitive separately:
 
 ```bash
 limitless validate-catalog --catalog examples/catalog
@@ -58,39 +83,10 @@ limitless validate-catalog --catalog examples/catalog
 limitless query \
   --catalog examples/catalog \
   --request examples/requests/exact-python.json
-
-limitless query \
-  --catalog examples/catalog \
-  --request examples/requests/method-portable.json
-
-limitless query \
-  --catalog examples/catalog \
-  --request examples/requests/abstain.json
 ```
 
-Exercise the complete exact-adoption lifecycle in a disposable receiver:
-
-```bash
-demo_dir=$(mktemp -d)
-cp -R examples/receiver "$demo_dir/receiver"
-
-limitless query \
-  --catalog examples/catalog \
-  --request examples/requests/exact-python.json \
-  --output "$demo_dir/decision.json"
-
-limitless adopt \
-  --catalog examples/catalog \
-  --decision "$demo_dir/decision.json" \
-  --recipe "$demo_dir/receiver/recipe.json" \
-  --receiver "$demo_dir/receiver" \
-  --receipt "$demo_dir/adoption.json" \
-  --owner-authorized
-```
-
-The receiver now contains `_vendor/greeting.py`; `adoption.json` binds the
-decision, recipe, exact installed bytes, receiver state, verifier bytes and
-results, containment profile, and explicit operator authorization.
+Continue with the exact installation, method, abstention, and authoring commands
+in [the conformance example](examples/README.md).
 
 ## MCP
 

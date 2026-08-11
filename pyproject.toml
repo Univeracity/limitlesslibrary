@@ -46,6 +46,15 @@ where = ["src"]
 [tool.setuptools.package-data]
 "limitless_library" = ["py.typed"]
 "limitless_library.schemas" = ["*.json"]
+"limitless_library.demo_assets" = [
+  "authoring/*.json",
+  "catalog/*/*.json",
+  "catalog/*/payload/*.py",
+  "requests/*.json",
+  "receiver/*.json",
+  "receiver/*.py",
+  "receiver/verify/*.py",
+]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

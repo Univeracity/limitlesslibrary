@@ -1,0 +1,30 @@
+{
+  "id": "recipe:structured-redaction-python-receiver",
+  "mappings": [
+    {
+      "source": "payload/structured_redaction.py",
+      "target": "_vendor/structured_redaction.py"
+    }
+  ],
+  "offerRef": {
+    "capsuleDigest": "sha256:864eb6a28599627510fe89c23263684b82f2950c980b5ff3027261afee565a65",
+    "offerId": "offer:structured-redaction-python-exact"
+  },
+  "schemaVersion": "limitless.recipe/0.1",
+  "verifiers": [
+    {
+      "argv": ["{python}", "/work/verify/adherence.py"],
+      "id": "runtime-adherence",
+      "kind": "adherence",
+      "maxWallSeconds": 10,
+      "source": {"path": "verify/adherence.py"}
+    },
+    {
+      "argv": ["{python}", "/work/verify/obligations.py"],
+      "id": "receiver-obligations",
+      "kind": "obligation",
+      "maxWallSeconds": 10,
+      "source": {"path": "verify/obligations.py"}
+    }
+  ]
+}

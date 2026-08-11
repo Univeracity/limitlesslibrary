@@ -1,0 +1,37 @@
+{
+  "id": "recipe:structured-redaction-python-receiver",
+  "mappings": [
+    {
+      "source": "payload/structured_redaction.py",
+      "target": "_vendor/structured_redaction.py"
+    }
+  ],
+  "offerRef": {
+    "capsuleDigest": "sha256:864eb6a28599627510fe89c23263684b82f2950c980b5ff3027261afee565a65",
+    "offerId": "offer:structured-redaction-python-exact"
+  },
+  "recipeDigest": "sha256:3a919ddb00bf3f96270a35b7094585b0f8a58e245b6e7b76aa85cd0dbaa4b91b",
+  "schemaVersion": "limitless.recipe/0.1",
+  "verifiers": [
+    {
+      "argv": ["{python}", "/work/verify/adherence.py"],
+      "id": "runtime-adherence",
+      "kind": "adherence",
+      "maxWallSeconds": 10,
+      "source": {
+        "digest": "sha256:625af0d5935dfa0ca2520fc90bdce4e41b17c4f82586db4990d2eadd145d5848",
+        "path": "verify/adherence.py"
+      }
+    },
+    {
+      "argv": ["{python}", "/work/verify/obligations.py"],
+      "id": "receiver-obligations",
+      "kind": "obligation",
+      "maxWallSeconds": 10,
+      "source": {
+        "digest": "sha256:d5d90fc1a9fa0973cbb4a8fcfc8b5d154b461091d34187f20122ab8063ed3914",
+        "path": "verify/obligations.py"
+      }
+    }
+  ]
+}

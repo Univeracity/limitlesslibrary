@@ -8,3 +8,6 @@
 - No-overwrite installation and contained receiver-owned verification.
 - Python, CLI, and MCP 2026-07-28 query surfaces.
 - Neutral end-to-end conformance example.
+- One-command local lifecycle demo with packaged structured-event redaction,
+  exact adoption, receiver verification, method guidance, abstention, and
+  retainable evidence.
