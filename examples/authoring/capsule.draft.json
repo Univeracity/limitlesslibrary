@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "limitless.capsule/0.1",
+  "id": "capsule:hello-component",
+  "version": "0.1.0",
+  "title": "Hello component and implementation method",
+  "license": "Apache-2.0",
+  "offers": [
+    {
+      "id": "offer:hello-python-exact",
+      "kind": "exact-component",
+      "priority": 100,
+      "taskKind": "render-greeting",
+      "compatibility": {
+        "constraints": ["language:python", "runtime:any"],
+        "toolchain": {"python": ["3.11", "3.12", "3.13"]}
+      },
+      "policy": {
+        "allowedUses": ["development", "evaluation"],
+        "tenantScopes": ["public"],
+        "state": "active"
+      },
+      "files": [{"source": "payload/greeting.py"}],
+      "method": null
+    },
+    {
+      "id": "offer:hello-portable-method",
+      "kind": "method",
+      "priority": 50,
+      "taskKind": "render-greeting",
+      "compatibility": {
+        "constraints": ["runtime:any"],
+        "toolchain": {}
+      },
+      "policy": {
+        "allowedUses": ["development", "evaluation"],
+        "tenantScopes": ["public"],
+        "state": "active"
+      },
+      "files": null,
+      "method": {
+        "summary": "Normalize a non-empty name and render a deterministic greeting.",
+        "steps": [
+          "Reject values that are not strings or become empty after trimming.",
+          "Trim surrounding whitespace without otherwise changing the name.",
+          "Return the literal prefix 'Hello, ', the normalized name, and a trailing exclamation mark."
+        ],
+        "verification": [
+          "A normal name produces exactly 'Hello, Ada!'.",
+          "Surrounding whitespace is removed.",
+          "Empty and whitespace-only names are rejected."
+        ]
+      }
+    }
+  ]
+}

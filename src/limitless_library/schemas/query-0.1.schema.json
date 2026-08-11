@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://limitlesslibrary.com/schema/query-0.1.json",
+  "title": "Limitless query-before-work request alpha",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "taskKind", "receiver", "requestedUse", "tenantScope", "evaluatedAt"],
+  "properties": {
+    "schemaVersion": {"const": "limitless.query/0.1"},
+    "taskKind": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "receiver": {
+      "type": "object", "additionalProperties": false, "required": ["constraints", "toolchain"],
+      "properties": {
+        "constraints": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 200}},
+        "toolchain": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 100}}
+      }
+    },
+    "requestedUse": {"type": "string", "minLength": 1, "maxLength": 200},
+    "tenantScope": {"type": "string", "minLength": 1, "maxLength": 200},
+    "evaluatedAt": {"type": "string", "format": "date-time"}
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "limitless.recipe/0.1",
+  "id": "recipe:hello-python-receiver",
+  "offerRef": {
+    "capsuleDigest": "sha256:e0fbe3f7d9b95fec77107f6e52b62fa55b3e3b7d5c031d897d50e5d8c49548d3",
+    "offerId": "offer:hello-python-exact"
+  },
+  "mappings": [
+    {"source": "payload/greeting.py", "target": "_vendor/greeting.py"}
+  ],
+  "verifiers": [
+    {
+      "id": "runtime-adherence",
+      "kind": "adherence",
+      "source": {"path": "verify/adherence.py"},
+      "argv": ["{python}", "/work/verify/adherence.py"],
+      "maxWallSeconds": 10
+    },
+    {
+      "id": "receiver-obligations",
+      "kind": "obligation",
+      "source": {"path": "verify/obligations.py"},
+      "argv": ["{python}", "/work/verify/obligations.py"],
+      "maxWallSeconds": 10
+    }
+  ]
+}

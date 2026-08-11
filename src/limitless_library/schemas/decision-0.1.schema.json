@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://limitlesslibrary.com/schema/decision-0.1.json",
+  "title": "Limitless query-before-work decision alpha",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "decision", "treatment", "requestDigest", "catalogDigest", "selected", "reason", "decisionDigest"],
+  "properties": {
+    "schemaVersion": {"const": "limitless.decision/0.1"},
+    "decision": {"enum": ["reuse", "instantiate", "abstain"]},
+    "treatment": {"enum": ["exact-adoption", "method-guided", "abstain"]},
+    "requestDigest": {"$ref": "#/$defs/digest"},
+    "catalogDigest": {"$ref": "#/$defs/digest"},
+    "selected": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/selected"}]},
+    "reason": {"enum": ["eligible-offer", "no-safe-selection"]},
+    "decisionDigest": {"$ref": "#/$defs/digest"}
+  },
+  "allOf": [
+    {"if": {"properties": {"decision": {"const": "abstain"}}}, "then": {"properties": {"selected": {"type": "null"}, "treatment": {"const": "abstain"}, "reason": {"const": "no-safe-selection"}}}},
+    {"if": {"properties": {"decision": {"const": "reuse"}}}, "then": {"properties": {"selected": {"type": "object"}, "treatment": {"const": "exact-adoption"}}}},
+    {"if": {"properties": {"decision": {"const": "instantiate"}}}, "then": {"properties": {"selected": {"type": "object"}, "treatment": {"const": "method-guided"}}}}
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "selected": {
+      "type": "object", "additionalProperties": false, "required": ["capsule", "offer"],
+      "properties": {
+        "capsule": {
+          "type": "object", "additionalProperties": false, "required": ["id", "version", "digest", "license"],
+          "properties": {
+            "id": {"type": "string"}, "version": {"type": "string"}, "digest": {"$ref": "#/$defs/digest"}, "license": {"type": "string"}
+          }
+        },
+        "offer": {"$ref": "#/$defs/offer"}
+      }
+    },
+    "path": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$"},
+    "file": {
+      "type": "object", "additionalProperties": false, "required": ["source", "digest"],
+      "properties": {"source": {"$ref": "#/$defs/path"}, "digest": {"$ref": "#/$defs/digest"}}
+    },
+    "method": {
+      "type": "object", "additionalProperties": false, "required": ["summary", "steps", "verification"],
+      "properties": {
+        "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "steps": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string", "minLength": 1, "maxLength": 2000}},
+        "verification": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string", "minLength": 1, "maxLength": 2000}}
+      }
+    },
+    "offer": {
+      "type": "object", "additionalProperties": false, "required": ["id", "kind", "taskKind", "files", "method"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^offer:"},
+        "kind": {"enum": ["exact-component", "method"]},
+        "taskKind": {"type": "string"},
+        "files": {"oneOf": [{"type": "null"}, {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/file"}}]},
+        "method": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/method"}]}
+      },
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "exact-component"}}}, "then": {"properties": {"files": {"type": "array"}, "method": {"type": "null"}}}},
+        {"if": {"properties": {"kind": {"const": "method"}}}, "then": {"properties": {"files": {"type": "null"}, "method": {"type": "object"}}}}
+      ]
+    }
+  }
+}

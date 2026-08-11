@@ -1,0 +1,4 @@
+title = "Limitless Library gitleaks configuration"
+
+[extend]
+useDefault = true

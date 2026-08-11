@@ -1,0 +1,5 @@
+include LICENSE NOTICE README.md SECURITY.md CONTRIBUTING.md CODE_OF_CONDUCT.md CHANGELOG.md
+recursive-include src/limitless_library/schemas *.json
+include src/limitless_library/py.typed
+recursive-include examples *.json *.py *.md
+recursive-include docs *.md
