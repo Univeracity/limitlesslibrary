@@ -1,0 +1,41 @@
+name: Capability proposal
+description: Propose a narrowly bounded improvement to verified reuse.
+title: "proposal: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the receiver outcome first. Do not include private operational details, receiver code, or catalog data.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+    validations:
+      required: true
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Safe outcome affected
+      options:
+        - Exact component adoption
+        - Source-free method guidance
+        - Safe abstention
+        - Lifecycle-wide or new outcome
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Trust boundary
+      description: Explain permissions, compatibility, verification ownership, disclosure, and failure behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification plan
+      description: Describe deterministic success and rejection cases.
+    validations:
+      required: true

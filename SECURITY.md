@@ -7,11 +7,17 @@ security stability guarantees yet.
 
 ## Reporting
 
-Do not disclose a suspected vulnerability in a public issue. Once the remote
-repository exists, use its private security-advisory channel. Before then,
-report it privately to the maintainer who provided this repository to you.
-Include the affected record, command, operating system, expected behavior, and
-a minimal reproduction that contains no secrets or third-party data.
+Do not disclose a suspected vulnerability in a public issue or discussion. Use
+the repository's [private security-advisory
+form](https://github.com/Univeracity/limitlesslibrary/security/advisories/new).
+If that form is unavailable during the pre-release transition, contact the
+repository owner through a previously established private channel.
+
+Include the affected version or commit, operating system, expected behavior,
+impact, and a minimal reproduction. Do not include credentials, private
+catalog records, receiver source code, adoption evidence, or third-party data.
+Reports are acknowledged after review; disclosure timing is coordinated when a
+fix is required.
 
 ## High-value areas
 

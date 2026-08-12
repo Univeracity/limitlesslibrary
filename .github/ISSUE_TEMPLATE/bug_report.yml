@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible problem in the verified-reuse lifecycle or packaged alpha.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, receiver source, private catalog records, or adoption evidence.
+        For a vulnerability, use the private reporting path in SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Installed version or public commit identifier.
+      placeholder: 0.1.0a0 or abc1234
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - Query, policy, or compatibility decision
+        - Exact-byte installation or rollback
+        - Receiver verification or containment
+        - MCP or Python connector
+        - Capsule, recipe, or schema authoring
+        - Demo, build, package, or documentation
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: State the expected safe outcome or fail-closed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include sanitized errors and a minimal reproduction.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Python version, Bubblewrap version, and non-sensitive configuration shape.
+    validations:
+      required: true

@@ -1,0 +1,21 @@
+name: Dependency Review
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Review dependency changes
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.LIMITLESS_ENABLE_PUBLIC_SECURITY_WORKFLOWS == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Review added and changed dependencies
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
