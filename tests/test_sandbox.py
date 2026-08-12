@@ -29,6 +29,11 @@ def test_hosted_python_prefix_is_mounted_read_only_at_fixed_path(
     assert sandbox.contained_python() == "/runtime/bin/python"
     binds = sandbox._runtime_binds()
     assert binds[-3:] == ["--ro-bind", str(prefix), "/runtime"]
+    assert sandbox._runtime_environment() == [
+        "--setenv",
+        "LD_LIBRARY_PATH",
+        "/runtime/lib:/runtime/lib64",
+    ]
 
 
 def test_broad_python_prefix_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

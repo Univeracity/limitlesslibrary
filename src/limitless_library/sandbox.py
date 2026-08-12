@@ -94,6 +94,15 @@ def _runtime_binds() -> list[str]:
     return result
 
 
+def _runtime_environment() -> list[str]:
+    _, runtime_root = _python_runtime()
+    if runtime_root is None:
+        return []
+    # Some relocatable CPython builds use an absolute RUNPATH for libpython.
+    # Point the dynamic loader only at the fixed, read-only runtime mount.
+    return ["--setenv", "LD_LIBRARY_PATH", f"{SANDBOX_RUNTIME}/lib:{SANDBOX_RUNTIME}/lib64"]
+
+
 def _limits(timeout: int) -> None:
     if resource is None:
         raise SandboxError("resource limits are unavailable on this platform")
@@ -224,6 +233,7 @@ def run_receiver_verifier(
         "--setenv",
         "PYTHONNOUSERSITE",
         "1",
+        *_runtime_environment(),
         "--setenv",
         "LIMITLESS_ASSET_DIGEST",
         asset_digest,
