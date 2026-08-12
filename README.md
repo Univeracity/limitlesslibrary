@@ -24,6 +24,17 @@
 
 ---
 
+## Reuse work without giving up trust
+
+AI agents repeatedly solve problems that another agent has already solved. That
+wastes time and compute, while simply copying earlier work can introduce code
+that is not permitted, does not fit, or has changed since it was created.
+
+Limitless Library gives agents a safer way to reuse what already works. Before
+starting from scratch, an agent can check for a trusted prior solution. The
+receiving environment stays in control: it decides what may enter, verifies the
+result locally, and records whether the reused work was actually adopted.
+
 Agents can find prior work. Finding it does not establish that it is
 authorized, compatible, unchanged, or actually used.
 
