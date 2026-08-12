@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 412" role="img" aria-labelledby="title desc">
+  <title id="title">Limitless Library verified reuse flow</title>
+  <desc id="desc">A query passes through a rights and fit decision. It produces an exact component, a source-free method, or a non-disclosing abstention. Exact components are verified locally, observed in use, and return an adoption receipt.</desc>
+  <style>
+    .node { fill: #f8f7ff; stroke: #7c6ee6; stroke-width: 1.5; }
+    .decision { fill: #f0eeff; }
+    .edge { fill: none; stroke: #555861; stroke-width: 1.75; marker-end: url(#arrow); }
+    .arrowhead { fill: #555861; }
+    .label-bg { fill: #ffffff; opacity: 0.96; }
+    .node-text, .edge-text {
+      fill: #292a31;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      text-anchor: middle;
+    }
+    .node-text { font-size: 16px; font-weight: 500; }
+    .edge-text { font-size: 13px; }
+    @media (prefers-color-scheme: dark) {
+      .node { fill: #201f2d; stroke: #9b8cff; }
+      .decision { fill: #29263e; }
+      .edge { stroke: #a9adb8; }
+      .arrowhead { fill: #a9adb8; }
+      .label-bg { fill: #0d1117; }
+      .node-text, .edge-text { fill: #f0f1f3; }
+    }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
+    </marker>
+  </defs>
+
+  <path class="edge" d="M 199 206 H 239"/>
+  <path class="edge" d="M 338 174 C 370 112, 392 72, 429 72"/>
+  <path class="edge" d="M 370 206 H 459"/>
+  <path class="edge" d="M 338 238 C 370 286, 405 340, 459 340"/>
+  <path class="edge" d="M 640 72 H 719"/>
+  <path class="edge" d="M 960 72 H 1029"/>
+  <path class="edge" d="M 1135 104 V 173"/>
+
+  <rect class="node" x="24" y="174" width="175" height="64" rx="5"/>
+  <text class="node-text" x="111.5" y="211">Query before work</text>
+
+  <path class="node decision" d="M 305 142 L 370 206 L 305 270 L 240 206 z"/>
+  <text class="node-text" x="305" y="211">Rights + fit</text>
+
+  <rect class="node" x="430" y="40" width="210" height="64" rx="5"/>
+  <text class="node-text" x="535" y="77">Install exact component</text>
+
+  <rect class="node" x="460" y="174" width="220" height="64" rx="5"/>
+  <text class="node-text" x="570" y="211">Return source-free method</text>
+
+  <rect class="node" x="460" y="308" width="230" height="64" rx="5"/>
+  <text class="node-text" x="575" y="345">Non-disclosing abstention</text>
+
+  <rect class="node" x="720" y="40" width="240" height="64" rx="5"/>
+  <text class="node-text" x="840" y="77">Receiver-local verification</text>
+
+  <rect class="node" x="1030" y="40" width="210" height="64" rx="5"/>
+  <text class="node-text" x="1135" y="77">Observed invocation</text>
+
+  <rect class="node" x="1030" y="174" width="210" height="64" rx="5"/>
+  <text class="node-text" x="1135" y="211">Return adoption receipt</text>
+
+  <rect class="label-bg" x="364" y="113" width="50" height="22" rx="3"/>
+  <text class="edge-text" x="389" y="128">Exact</text>
+
+  <rect class="label-bg" x="376" y="181" width="79" height="22" rx="3"/>
+  <text class="edge-text" x="415.5" y="196">Method only</text>
+
+  <rect class="label-bg" x="361" y="275" width="80" height="22" rx="3"/>
+  <text class="edge-text" x="401" y="290">No safe fit</text>
+</svg>

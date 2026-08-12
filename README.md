@@ -37,20 +37,7 @@ source-free method—or abstains without disclosing a candidate. The receiver
 decides what may enter, verifies it locally, and records evidence that adopted
 work was actually used.
 
-```mermaid
-flowchart LR
-    Q["Query before work"] --> G{"Rights + fit"}
-    G -->|Exact| C["Install exact component"]
-    G -->|Method only| M["Return source-free method"]
-    G -->|No safe fit| A["Non-disclosing abstention"]
-    C --> V["Receiver-local verification"]
-    subgraph P[" "]
-        direction TB
-        U["Observed invocation"] --> R["Return adoption receipt"]
-    end
-    V --> P
-    style P fill:transparent,stroke:transparent
-```
+![Verified reuse lifecycle: query before work; evaluate rights and fit; return an exact component, a source-free method, or a non-disclosing abstention; verify exact reuse locally; observe invocation; and return an adoption receipt.](docs/assets/verified-reuse-flow.svg)
 
 ## At a glance
 
