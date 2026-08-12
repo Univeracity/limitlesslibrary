@@ -27,25 +27,25 @@
 ## Reuse work without giving up trust
 
 AI agents repeatedly solve problems that another agent has already solved. That
-wastes time and compute, while simply copying earlier work can introduce code
-that is not permitted, does not fit, or has changed since it was created.
+wastes time and compute. Search alone does not make an earlier result safe to
+reuse: its authorization, compatibility, integrity, and actual adoption still
+need proof.
 
-Limitless Library gives agents a safer way to reuse what already works. Before
-starting from scratch, an agent can check for a trusted prior solution. The
-receiving environment stays in control: it decides what may enter, verifies the
-result locally, and records whether the reused work was actually adopted.
+Limitless Library lets agents check before starting from scratch. It returns one
+permissioned result that fits the receiving environment—an exact component or
+source-free method—or abstains without disclosing a candidate. The receiver
+decides what may enter, verifies it locally, and records evidence that adopted
+work was actually used.
 
-Agents can find prior work. Finding it does not establish that it is
-authorized, compatible, unchanged, or actually used.
-
-Limitless Library lets an agent ask before material work whether one
-permissioned prior result can safely cross into a receiving environment. It
-returns one exact component, one source-free method, or a non-disclosing
-abstention—and binds successful adoption to receiver-owned evidence.
-
-```text
-query before work → rights + fit decision → receiver-local verification
-                  → observed invocation → adoption receipt
+```mermaid
+flowchart LR
+    Q["Query before work"] --> G{"Rights + fit"}
+    G -->|Exact| C["Install exact component"]
+    G -->|Method only| M["Return source-free method"]
+    G -->|No safe fit| A["Non-disclosing abstention"]
+    C --> V["Receiver-local verification"]
+    V --> U["Observed invocation"]
+    U --> R["Adoption receipt"]
 ```
 
 ## At a glance
