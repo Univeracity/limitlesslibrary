@@ -15,7 +15,9 @@ permissions:
 jobs:
   analyze:
     name: Analyze Python
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.LIMITLESS_ENABLE_PUBLIC_SECURITY_WORKFLOWS == 'true' }}
+    # GitHub withholds code scanning while this repository is private. The
+    # cutover procedure enables this switch immediately after publication.
+    if: ${{ vars.LIMITLESS_ENABLE_PUBLIC_SECURITY_WORKFLOWS == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:

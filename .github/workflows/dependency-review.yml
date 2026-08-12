@@ -10,7 +10,8 @@ permissions:
 jobs:
   review:
     name: Review dependency changes
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.LIMITLESS_ENABLE_PUBLIC_SECURITY_WORKFLOWS == 'true' }}
+    # Dependency review becomes an enforced gate at the public cutover.
+    if: ${{ vars.LIMITLESS_ENABLE_PUBLIC_SECURITY_WORKFLOWS == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
