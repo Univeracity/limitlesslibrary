@@ -1,4 +1,4 @@
-"""Small MCP 2026-07-28 and legacy JSON-RPC helpers."""
+"""Small MCP 2026-07-28 and initialization-era JSON-RPC helpers."""
 
 from __future__ import annotations
 
@@ -8,8 +8,10 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 LEGACY_PROTOCOL_VERSION = "2025-03-26"
+STABLE_PROTOCOL_VERSION = "2025-06-18"
 MODERN_PROTOCOL_VERSION = "2026-07-28"
-SUPPORTED_PROTOCOL_VERSIONS = (MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION)
+INITIALIZATION_PROTOCOL_VERSIONS = (STABLE_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION)
+SUPPORTED_PROTOCOL_VERSIONS = (MODERN_PROTOCOL_VERSION, *INITIALIZATION_PROTOCOL_VERSIONS)
 PROTOCOL_VERSION_META_KEY = "io.modelcontextprotocol/protocolVersion"
 CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo"
 CLIENT_CAPABILITIES_META_KEY = "io.modelcontextprotocol/clientCapabilities"
@@ -132,16 +134,17 @@ class McpToolDispatcher:
         if method == "initialize":
             params = message.get("params")
             requested = params.get("protocolVersion") if isinstance(params, dict) else None
-            if requested != LEGACY_PROTOCOL_VERSION:
+            if requested not in INITIALIZATION_PROTOCOL_VERSIONS:
                 return jsonrpc_error(
                     message_id,
                     -32602,
-                    f"unsupported protocolVersion; expected {LEGACY_PROTOCOL_VERSION}",
+                    "unsupported protocolVersion; expected one of "
+                    + ", ".join(INITIALIZATION_PROTOCOL_VERSIONS),
                 )
             return jsonrpc_result(
                 message_id,
                 {
-                    "protocolVersion": LEGACY_PROTOCOL_VERSION,
+                    "protocolVersion": requested,
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": self.server_name, "version": self.server_version},
                     "instructions": self.instructions,
@@ -194,7 +197,7 @@ class McpToolDispatcher:
 
 
 class McpToolSession:
-    """Track only the initialization state required by legacy MCP clients.
+    """Track only the state required by initialization-era MCP clients.
 
     Modern MCP remains stateless and bypasses this bit. The session carries no
     tool, tenant, credential, or authorization state.
@@ -247,7 +250,9 @@ def jsonrpc_result(message_id: Any, payload: dict[str, Any]) -> dict[str, Any]:
 
 def has_modern_metadata(message: dict[str, Any]) -> bool:
     params = message.get("params")
-    return isinstance(params, dict) and "_meta" in params
+    if not isinstance(params, dict) or not isinstance(params.get("_meta"), dict):
+        return False
+    return PROTOCOL_VERSION_META_KEY in params["_meta"]
 
 
 def modern_metadata(*, client_name: str, client_version: str) -> dict[str, Any]:

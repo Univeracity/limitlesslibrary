@@ -7,6 +7,7 @@
 - Exact component, source-free method, and abstention selection.
 - No-overwrite installation and contained receiver-owned verification.
 - Python, CLI, and MCP 2026-07-28 query surfaces.
+- MCP 2025-06-18 and legacy 2025-03-26 initialization compatibility.
 - Neutral end-to-end conformance example.
 - One-command local lifecycle demo with packaged structured-event redaction,
   exact adoption, receiver verification, method guidance, abstention, and

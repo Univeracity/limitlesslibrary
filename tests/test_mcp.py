@@ -11,6 +11,7 @@ from limitless_library.contracts import load_json
 from limitless_library.mcp_protocol import (
     LEGACY_PROTOCOL_VERSION,
     MODERN_PROTOCOL_VERSION,
+    STABLE_PROTOCOL_VERSION,
     McpToolCallError,
     McpToolDispatcher,
     McpToolSession,
@@ -45,17 +46,19 @@ def test_modern_mcp_discovers_and_queries_one_structured_tool() -> None:
     assert response["result"]["structuredContent"]["decision"] == "reuse"
 
 
-def test_legacy_initialize_preserves_query_first_instructions() -> None:
+@pytest.mark.parametrize("protocol_version", [STABLE_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION])
+def test_initialize_eras_preserve_query_first_instructions(protocol_version: str) -> None:
     response = handle_message(
         LocalCatalog(CATALOG_PATH),
         {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "initialize",
-            "params": {"protocolVersion": LEGACY_PROTOCOL_VERSION},
+            "params": {"protocolVersion": protocol_version},
         },
     )
 
+    assert response["result"]["protocolVersion"] == protocol_version
     assert response["result"]["instructions"] == SERVER_INSTRUCTIONS
 
 
@@ -130,7 +133,10 @@ def test_generic_dispatcher_returns_tool_error_without_hiding_protocol_success()
     assert invalid["error"]["code"] == -32602
 
 
-def test_generic_session_requires_legacy_initialize_but_keeps_modern_stateless() -> None:
+@pytest.mark.parametrize("protocol_version", [STABLE_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION])
+def test_generic_session_requires_initialize_but_keeps_modern_stateless(
+    protocol_version: str,
+) -> None:
     dispatcher = McpToolDispatcher(
         server_name="fixture",
         server_version="1",
@@ -146,13 +152,17 @@ def test_generic_session_requires_legacy_initialize_but_keeps_modern_stateless()
         call_tool=lambda _name, arguments: arguments,
     )
     session = McpToolSession(dispatcher)
-    legacy_call = {
+    initialization_call = {
         "jsonrpc": "2.0",
         "id": 1,
         "method": "tools/call",
-        "params": {"name": "fixture_echo", "arguments": {"era": "legacy"}},
+        "params": {
+            "name": "fixture_echo",
+            "arguments": {"era": "initialized"},
+            "_meta": {"progressToken": 0},
+        },
     }
-    held = session.handle(legacy_call)
+    held = session.handle(initialization_call)
     modern = session.handle(
         _message("tools/call", {"name": "fixture_echo", "arguments": {"era": "modern"}}, 2)
     )
@@ -161,15 +171,15 @@ def test_generic_session_requires_legacy_initialize_but_keeps_modern_stateless()
             "jsonrpc": "2.0",
             "id": 3,
             "method": "initialize",
-            "params": {"protocolVersion": LEGACY_PROTOCOL_VERSION},
+            "params": {"protocolVersion": protocol_version},
         }
     )
-    admitted = session.handle(legacy_call)
+    admitted = session.handle(initialization_call)
 
     assert held["error"]["code"] == -32600
     assert modern["result"]["structuredContent"] == {"era": "modern"}
-    assert initialized["result"]["protocolVersion"] == LEGACY_PROTOCOL_VERSION
-    assert admitted["result"]["structuredContent"] == {"era": "legacy"}
+    assert initialized["result"]["protocolVersion"] == protocol_version
+    assert admitted["result"]["structuredContent"] == {"era": "initialized"}
 
 
 def test_bounded_stdio_connector_validates_request_binding() -> None:

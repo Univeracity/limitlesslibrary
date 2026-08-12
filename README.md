@@ -165,9 +165,9 @@ limitless-mcp --catalog examples/catalog
 ```
 
 It exposes `limitless_query_before_work` and supports stateless MCP
-`2026-07-28` requests plus the legacy `2025-03-26` initialization flow. MCP is
-a decision channel, not an artifact transport; installation remains an
-explicit receiver-local operation.
+`2026-07-28` requests plus the `2025-06-18` and legacy `2025-03-26`
+initialization flows. MCP is a decision channel, not an artifact transport;
+installation remains an explicit receiver-local operation.
 
 Python callers can use `query_local(...)` or `McpStdioConnector`. See
 [Protocol](docs/PROTOCOL.md).
