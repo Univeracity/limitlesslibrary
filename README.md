@@ -44,8 +44,12 @@ flowchart LR
     G -->|Method only| M["Return source-free method"]
     G -->|No safe fit| A["Non-disclosing abstention"]
     C --> V["Receiver-local verification"]
-    V --> U["Observed invocation"]
-    U --> R["Adoption receipt"]
+    subgraph P[" "]
+        direction TB
+        U["Observed invocation"] --> R["Return adoption receipt"]
+    end
+    V --> P
+    style P fill:transparent,stroke:transparent
 ```
 
 ## At a glance
