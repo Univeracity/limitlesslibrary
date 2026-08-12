@@ -13,6 +13,7 @@ from typing import Any
 from .catalog import LocalCatalog
 from .contracts import load_json, write_new_json
 from .installer import adopt_exact_component
+from .sandbox import containment_readiness
 
 
 class DemoError(RuntimeError):
@@ -111,6 +112,13 @@ def _execute(workspace: Path, *, retained: bool) -> dict[str, Any]:
 
 def run_demo(workspace: Path | None = None) -> dict[str, Any]:
     """Run exact adoption, method selection, and abstention entirely locally."""
+
+    readiness = containment_readiness()
+    if readiness["status"] != "ready":
+        raise DemoError(
+            f"exact-adoption containment is unavailable: {readiness['reason']}; "
+            "run `limitless doctor` for remediation"
+        )
 
     if workspace is not None:
         destination = Path(workspace).resolve()

@@ -50,6 +50,9 @@ jobs:
         run: pip-audit --local --progress-spinner off
       - name: Test
         run: pytest
+      - name: Verify one-command source quick start
+        if: matrix.python-version == '3.11'
+        run: python scripts/verify-source-quickstart.py
       - name: Build
         run: python -m build
 

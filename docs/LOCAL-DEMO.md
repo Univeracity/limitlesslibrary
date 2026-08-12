@@ -1,9 +1,20 @@
 # Local lifecycle demo
 
-Run the complete lifecycle from an installed checkout:
+Run the complete lifecycle directly from a source checkout:
 
 ```bash
-limitless demo --workspace ./limitless-demo
+./scripts/limitless
+```
+
+The launcher prepares an isolated local environment on first use and retains
+the initial evidence under `.limitless/quickstart`. No environment activation
+or manual package installation is required. Run `./scripts/limitless doctor`
+for an actionable containment check.
+
+Choose a separate evidence path when needed:
+
+```bash
+./scripts/limitless demo --workspace ./limitless-demo
 ```
 
 The workspace must not already exist. Limitless creates it, copies a clean
@@ -33,7 +44,7 @@ Run without `--workspace` for a disposable demonstration, or add
 `--format json` for machine-readable output:
 
 ```bash
-limitless demo --format json
+./scripts/limitless demo --format json
 ```
 
 Every demo asset is packaged under `limitless_library.demo_assets`; the command

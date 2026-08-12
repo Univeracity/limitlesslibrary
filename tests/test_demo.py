@@ -46,6 +46,22 @@ def test_demo_refuses_to_reuse_a_workspace(tmp_path: Path) -> None:
         run_demo(workspace)
 
 
+def test_demo_checks_containment_before_creating_a_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "must-not-exist"
+    monkeypatch.setattr(
+        "limitless_library.demo.containment_readiness",
+        lambda: {"status": "blocked", "reason": "Bubblewrap is unavailable"},
+    )
+
+    with pytest.raises(DemoError, match="limitless doctor"):
+        run_demo(workspace)
+
+    assert not workspace.exists()
+
+
 def test_demo_authoring_records_reproduce_sealed_assets() -> None:
     capsule_root = ASSETS / "catalog" / "structured-redaction"
     receiver = ASSETS / "receiver"

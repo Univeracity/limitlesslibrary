@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import selectors
 import shutil
 
@@ -28,6 +29,7 @@ class SandboxError(RuntimeError):
 
 MAX_OUTPUT_BYTES = 1024 * 1024
 READ_BLOCK_BYTES = 64 * 1024
+CONTAINMENT_PROBE_TIMEOUT_SECONDS = 5
 # This path exists only inside the new Bubblewrap mount namespace.
 SANDBOX_TMP = "/tmp"  # nosec B108
 SANDBOX_RUNTIME = Path("/runtime")
@@ -174,6 +176,81 @@ def _run_bounded(command: Sequence[str], timeout: int, environment: Mapping[str,
         process.stdout.close()
         process.stderr.close()
     return exit_code, bytes(output["stdout"]), bytes(output["stderr"])
+
+
+def containment_readiness() -> dict[str, Any]:
+    """Probe the exact-adoption host requirements without running receiver code."""
+
+    linux_host = sys.platform.startswith("linux")
+    limits_available = resource is not None
+    bwrap = shutil.which("bwrap")
+    checks = {
+        "linuxHost": linux_host,
+        "posixResourceLimits": limits_available,
+        "bubblewrapExecutable": bwrap is not None,
+        "bubblewrapProbe": False,
+    }
+    result: dict[str, Any] = {
+        "status": "blocked",
+        "platform": sys.platform,
+        "pythonVersion": platform.python_version(),
+        "checks": checks,
+        "reason": None,
+        "remediation": None,
+    }
+    if not linux_host:
+        result["reason"] = "exact-adoption verification currently requires Linux"
+        result["remediation"] = "Run exact adoption on a Linux host; query and method selection remain portable."
+        return result
+    if not limits_available:
+        result["reason"] = "POSIX resource limits are unavailable"
+        result["remediation"] = "Use a Linux Python build with the standard resource module."
+        return result
+    if bwrap is None:
+        result["reason"] = "Bubblewrap (bwrap) is not installed"
+        result["remediation"] = "Install Bubblewrap with the host package manager, then run `limitless doctor` again."
+        return result
+
+    true_executable = shutil.which("true")
+    if true_executable is None:
+        result["reason"] = "the host has no executable `true` command for the containment probe"
+        result["remediation"] = "Install the host's standard core utilities, then run `limitless doctor` again."
+        return result
+    command = [
+        bwrap,
+        "--die-with-parent",
+        "--new-session",
+        "--unshare-net",
+        "--unshare-pid",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--ro-bind",
+        "/",
+        "/",
+        "--clearenv",
+        "--",
+        true_executable,
+    ]
+    try:
+        exit_code, _, _ = _run_bounded(
+            command,
+            CONTAINMENT_PROBE_TIMEOUT_SECONDS,
+            {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")},
+        )
+    except SandboxError:
+        exit_code = -1
+    if exit_code != 0:
+        result["reason"] = "Bubblewrap could not create the required isolated namespaces"
+        result["remediation"] = (
+            "Allow unprivileged Bubblewrap namespaces on this host, then run `limitless doctor` again."
+        )
+        return result
+
+    checks["bubblewrapProbe"] = True
+    result["status"] = "ready"
+    return result
 
 
 def _render_argv(argv: list[str]) -> list[str]:

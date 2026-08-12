@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Bootstrap and run Limitless Library directly from a source checkout."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+STATE_ROOT = ROOT / ".limitless"
+ENVIRONMENT = STATE_ROOT / "venv"
+MARKER = ENVIRONMENT / ".limitless-source-environment.json"
+
+
+def _environment_python() -> Path:
+    if os.name == "nt":
+        return ENVIRONMENT / "Scripts" / "python.exe"
+    return ENVIRONMENT / "bin" / "python"
+
+
+def _fingerprint() -> dict[str, object]:
+    project = ROOT / "pyproject.toml"
+    return {
+        "root": str(ROOT),
+        "python": list(sys.version_info[:3]),
+        "pyprojectSha256": hashlib.sha256(project.read_bytes()).hexdigest(),
+    }
+
+
+def _marker_matches(expected: dict[str, object]) -> bool:
+    try:
+        return json.loads(MARKER.read_text(encoding="utf-8")) == expected
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+
+
+def _run(command: list[str]) -> None:
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    environment["PYTHONNOUSERSITE"] = "1"
+    environment["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+    subprocess.run(command, cwd=ROOT, env=environment, check=True)
+
+
+def _prepare_environment() -> Path:
+    if sys.version_info < (3, 11):  # noqa: UP036 - the source launcher runs before packaging enforces this
+        raise SystemExit("Limitless Library requires Python 3.11 or newer.")
+    if STATE_ROOT.is_symlink() or ENVIRONMENT.is_symlink():
+        raise SystemExit("Refusing a symlinked .limitless source environment.")
+
+    environment_python = _environment_python()
+    if not environment_python.is_file():
+        print("Preparing an isolated Limitless environment (first run only)...", file=sys.stderr)
+        STATE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+        try:
+            _run([sys.executable, "-m", "venv", str(ENVIRONMENT)])
+        except subprocess.CalledProcessError as error:
+            raise SystemExit("Could not create the local virtual environment; ensure Python venv support is installed.") from error
+
+    expected = _fingerprint()
+    if not _marker_matches(expected):
+        print("Installing the local Limitless package and its dependencies...", file=sys.stderr)
+        try:
+            _run(
+                [
+                    str(environment_python),
+                    "-m",
+                    "pip",
+                    "install",
+                    "--quiet",
+                    "--editable",
+                    str(ROOT),
+                ]
+            )
+        except subprocess.CalledProcessError as error:
+            raise SystemExit("Could not install the local Limitless package into its isolated environment.") from error
+        MARKER.write_text(json.dumps(expected, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return environment_python
+
+
+def main() -> None:
+    environment_python = _prepare_environment()
+    arguments = sys.argv[1:]
+    if not arguments:
+        quickstart = STATE_ROOT / "quickstart"
+        if quickstart.exists() or quickstart.is_symlink():
+            print(
+                f"Existing quick-start evidence retained at {quickstart}; running a disposable replay.",
+                file=sys.stderr,
+            )
+            arguments = ["demo"]
+        else:
+            arguments = ["demo", "--workspace", str(quickstart)]
+
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    environment["PYTHONNOUSERSITE"] = "1"
+    os.execve(
+        environment_python,
+        [str(environment_python), "-m", "limitless_library.cli", *arguments],
+        environment,
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -9,7 +9,7 @@ trust model are easiest to review.
 3. Add or update tests, including at least one rejection case for trust-boundary
    changes.
 4. Run `pytest`, `ruff check .`, `bandit -r -q src`, `pip-audit --local`,
-   and the isolated quickstart.
+   and `python scripts/verify-source-quickstart.py`.
 5. Update the schema and protocol documentation together when changing a public
    record.
 6. Never commit real receiver repositories, credentials, private catalog data,

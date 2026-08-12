@@ -52,36 +52,45 @@ work was actually used.
 
 ## Quick start
 
-### Requirements
-
-- Python 3.11 or newer.
-- Linux with [Bubblewrap](https://github.com/containers/bubblewrap)
-  (`bwrap`) for exact-adoption verification.
-
-On Debian or Ubuntu:
+Try the complete local lifecycle from a source checkout. You need Python 3.11
+or newer and [Bubblewrap](https://github.com/containers/bubblewrap) on Linux.
+On Debian or Ubuntu, install the one system dependency if it is not already
+present:
 
 ```bash
 sudo apt-get install bubblewrap
 ```
 
-Create a clean environment, install the project, and run the complete local
-lifecycle:
+Then run:
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install .
-limitless demo
+git clone https://github.com/Univeracity/limitlesslibrary.git
+cd limitlesslibrary
+./scripts/limitless
 ```
 
-Retain the decisions, installed component, verifier evidence, and adoption
-receipt for inspection:
+That is the only project command required. On first use, the launcher creates
+an isolated environment under `.limitless/`, installs the small Python
+dependency set, runs exact adoption, method guidance, and safe abstention, and
+retains inspectable evidence under `.limitless/quickstart`. It requires no
+environment activation, account, cloud service, model API, or model download.
+The initial dependency installation may require package-index access; the
+lifecycle itself runs without network access.
+
+Check host readiness or retain another run at a path you choose:
 
 ```bash
-limitless demo --workspace ./limitless-demo
+./scripts/limitless doctor
+./scripts/limitless demo --workspace ./limitless-demo
 ```
 
-The command deliberately refuses an existing workspace.
+The demo refuses to overwrite an existing workspace. Later launcher runs reuse
+the isolated environment; running it without arguments keeps the original
+quick-start evidence and performs a disposable replay.
+
+When integrating Limitless into another environment, install the checkout with
+`python -m pip install .`; the installed commands are `limitless` and
+`limitless-mcp`.
 
 ### What the demo does
 

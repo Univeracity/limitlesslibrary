@@ -11,10 +11,36 @@ from .catalog import CatalogError, LocalCatalog, seal_capsule
 from .contracts import ContractError, load_json, write_new_json
 from .demo import DemoError, format_demo, run_demo
 from .installer import AdoptionError, adopt_exact_component, seal_recipe, validate_recipe
+from .sandbox import containment_readiness
 
 
 def _print(value: dict[str, object]) -> None:
     print(json.dumps(value, indent=2, sort_keys=True))
+
+
+def _format_doctor(result: dict[str, object]) -> str:
+    checks = result["checks"]
+    if not isinstance(checks, dict):
+        raise TypeError("doctor checks must be an object")
+
+    def state(name: str) -> str:
+        return "ready" if checks[name] is True else "blocked"
+
+    lines = [
+        "Limitless local readiness",
+        "",
+        f"  Python: {result['pythonVersion']}",
+        f"  Linux host: {state('linuxHost')}",
+        f"  POSIX resource limits: {state('posixResourceLimits')}",
+        f"  Bubblewrap executable: {state('bubblewrapExecutable')}",
+        f"  Bubblewrap containment probe: {state('bubblewrapProbe')}",
+        "",
+    ]
+    if result["status"] == "ready":
+        lines.append("READY: exact adoption can run with receiver-owned containment.")
+    else:
+        lines.extend([f"BLOCKED: {result['reason']}", f"Next: {result['remediation']}"])
+    return "\n".join(lines)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -24,6 +50,9 @@ def _parser() -> argparse.ArgumentParser:
     demo = subparsers.add_parser("demo", help="run the complete verified-reuse lifecycle locally")
     demo.add_argument("--workspace", type=Path, help="new directory in which to retain all demo evidence")
     demo.add_argument("--format", choices=("text", "json"), default="text")
+
+    doctor = subparsers.add_parser("doctor", help="check whether exact adoption can run safely on this host")
+    doctor.add_argument("--format", choices=("text", "json"), default="text")
 
     validate_catalog = subparsers.add_parser("validate-catalog", help="validate every capsule and exact file")
     validate_catalog.add_argument("--catalog", type=Path, required=True)
@@ -66,6 +95,14 @@ def main() -> None:
                 _print(result)
             else:
                 print(format_demo(result))
+        elif args.command == "doctor":
+            result = containment_readiness()
+            if args.format == "json":
+                _print(result)
+            else:
+                print(_format_doctor(result))
+            if result["status"] != "ready":
+                raise SystemExit(1)
         elif args.command == "validate-catalog":
             catalog = LocalCatalog(args.catalog)
             _print({"status": "valid", "catalogDigest": catalog.catalog_digest})

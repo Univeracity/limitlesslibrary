@@ -4,3 +4,5 @@ recursive-include src/limitless_library/demo_assets *.json *.py
 include src/limitless_library/py.typed
 recursive-include examples *.json *.py *.md
 recursive-include docs *.md *.png
+recursive-include docs *.svg
+include scripts/limitless scripts/verify-source-quickstart.py

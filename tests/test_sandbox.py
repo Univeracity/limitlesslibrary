@@ -44,3 +44,40 @@ def test_broad_python_prefix_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
     with pytest.raises(sandbox.SandboxError, match="outside the contained runtime mounts"):
         sandbox.contained_python()
+
+
+def test_containment_readiness_explains_missing_bubblewrap(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sandbox.sys, "platform", "linux")
+    original_which = sandbox.shutil.which
+    monkeypatch.setattr(sandbox.shutil, "which", lambda command: None if command == "bwrap" else original_which(command))
+
+    result = sandbox.containment_readiness()
+
+    assert result["status"] == "blocked"
+    assert result["checks"]["bubblewrapExecutable"] is False
+    assert result["checks"]["bubblewrapProbe"] is False
+    assert "not installed" in result["reason"]
+
+
+def test_containment_readiness_requires_a_successful_namespace_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sandbox.sys, "platform", "linux")
+    monkeypatch.setattr(sandbox.shutil, "which", lambda command: f"/usr/bin/{command}")
+    monkeypatch.setattr(sandbox, "_run_bounded", lambda *args, **kwargs: (1, b"", b"blocked"))
+
+    result = sandbox.containment_readiness()
+
+    assert result["status"] == "blocked"
+    assert result["checks"]["bubblewrapExecutable"] is True
+    assert result["checks"]["bubblewrapProbe"] is False
+    assert "namespaces" in result["reason"]
+
+
+def test_containment_readiness_reports_a_usable_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sandbox.sys, "platform", "linux")
+    monkeypatch.setattr(sandbox.shutil, "which", lambda command: f"/usr/bin/{command}")
+    monkeypatch.setattr(sandbox, "_run_bounded", lambda *args, **kwargs: (0, b"", b""))
+
+    result = sandbox.containment_readiness()
+
+    assert result["status"] == "ready"
+    assert all(result["checks"].values())
