@@ -8,8 +8,8 @@ import pytest
 from limitless_library.catalog import LocalCatalog
 from limitless_library.connector import ConnectorError, McpStdioConnector, validate_connector_decision
 from limitless_library.contracts import load_json
-from limitless_library.mcp_protocol import MODERN_PROTOCOL_VERSION, modern_metadata
-from limitless_library.mcp_server import TOOL_NAME, handle_message
+from limitless_library.mcp_protocol import LEGACY_PROTOCOL_VERSION, MODERN_PROTOCOL_VERSION, modern_metadata
+from limitless_library.mcp_server import SERVER_INSTRUCTIONS, TOOL_NAME, handle_message
 
 ROOT = Path(__file__).parents[1]
 CATALOG_PATH = ROOT / "examples" / "catalog"
@@ -36,6 +36,20 @@ def test_modern_mcp_discovers_and_queries_one_structured_tool() -> None:
         _message("tools/call", {"name": TOOL_NAME, "arguments": load_json(REQUEST)}, 3),
     )
     assert response["result"]["structuredContent"]["decision"] == "reuse"
+
+
+def test_legacy_initialize_preserves_query_first_instructions() -> None:
+    response = handle_message(
+        LocalCatalog(CATALOG_PATH),
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": LEGACY_PROTOCOL_VERSION},
+        },
+    )
+
+    assert response["result"]["instructions"] == SERVER_INSTRUCTIONS
 
 
 def test_bounded_stdio_connector_validates_request_binding() -> None:

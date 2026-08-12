@@ -26,6 +26,7 @@ from .schemas import load_schema
 SERVER_NAME = "limitless-library"
 TOOL_NAME = "limitless_query_before_work"
 MAX_REQUEST_BYTES = 1024 * 1024
+SERVER_INSTRUCTIONS = "Query before material work; locally verify any selected bytes before adoption."
 
 
 def _tool() -> dict[str, Any]:
@@ -50,7 +51,7 @@ def _modern(registry: LocalCatalog, message: dict[str, Any]) -> dict[str, Any]:
                 "resultType": "complete",
                 "supportedVersions": [MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION],
                 "capabilities": {"tools": {"listChanged": False}},
-                "instructions": "Query before material work; locally verify any selected bytes before adoption.",
+                "instructions": SERVER_INSTRUCTIONS,
                 "ttlMs": 3600000,
                 "cacheScope": "public",
                 "_meta": {SERVER_INFO_META_KEY: {"name": SERVER_NAME, "version": __version__}},
@@ -102,6 +103,7 @@ def handle_message(registry: LocalCatalog, message: dict[str, Any]) -> dict[str,
                 "protocolVersion": LEGACY_PROTOCOL_VERSION,
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": SERVER_NAME, "version": __version__},
+                "instructions": SERVER_INSTRUCTIONS,
             },
         )
     if method == "tools/list":
