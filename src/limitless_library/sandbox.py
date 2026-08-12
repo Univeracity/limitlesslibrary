@@ -30,24 +30,67 @@ MAX_OUTPUT_BYTES = 1024 * 1024
 READ_BLOCK_BYTES = 64 * 1024
 # This path exists only inside the new Bubblewrap mount namespace.
 SANDBOX_TMP = "/tmp"  # nosec B108
+SANDBOX_RUNTIME = Path("/runtime")
+STANDARD_RUNTIME_ROOTS = (Path("/usr"), Path("/usr/local"), Path("/lib"), Path("/lib64"), Path("/bin"))
+# These are reject-only comparisons, never locations where Limitless creates files.
+BROAD_RUNTIME_ROOTS = {
+    Path("/"),
+    Path("/home"),
+    Path("/opt"),
+    Path("/srv"),
+    Path("/tmp"),  # nosec B108
+    Path("/var"),
+}
+
+
+def _relative_to(executable: Path, root: Path) -> Path | None:
+    try:
+        return executable.relative_to(root)
+    except ValueError:
+        return None
+
+
+def _python_runtime() -> tuple[Path, Path | None]:
+    try:
+        executable = Path(sys.executable).resolve(strict=True)
+    except OSError as error:
+        raise SandboxError("Python interpreter cannot be resolved") from error
+    if not executable.is_file() or not os.access(executable, os.X_OK):
+        raise SandboxError("Python interpreter is not an executable regular file")
+
+    for root in STANDARD_RUNTIME_ROOTS:
+        relative = _relative_to(executable, root)
+        if relative is not None:
+            return executable, None
+
+    seen: set[Path] = set()
+    for configured in (sys.prefix, sys.base_prefix):
+        try:
+            root = Path(configured).resolve(strict=True)
+        except OSError:
+            continue
+        if root in seen or root in BROAD_RUNTIME_ROOTS or not root.is_dir():
+            continue
+        seen.add(root)
+        relative = _relative_to(executable, root)
+        if relative is not None:
+            return SANDBOX_RUNTIME / relative, root
+    raise SandboxError("Python interpreter is outside the contained runtime mounts")
 
 
 def contained_python() -> str:
-    executable = Path(sys.executable).resolve()
-    for root in (Path("/usr"), Path("/usr/local"), Path("/lib"), Path("/lib64"), Path("/bin")):
-        try:
-            executable.relative_to(root)
-        except ValueError:
-            continue
-        return str(executable)
-    raise SandboxError("Python interpreter is outside the contained runtime mounts")
+    executable, _ = _python_runtime()
+    return str(executable)
 
 
 def _runtime_binds() -> list[str]:
     result: list[str] = []
-    for candidate in ("/usr", "/usr/local", "/lib", "/lib64", "/bin"):
+    for candidate in STANDARD_RUNTIME_ROOTS:
         if Path(candidate).exists():
-            result.extend(["--ro-bind", candidate, candidate])
+            result.extend(["--ro-bind", str(candidate), str(candidate)])
+    _, runtime_root = _python_runtime()
+    if runtime_root is not None:
+        result.extend(["--ro-bind", str(runtime_root), str(SANDBOX_RUNTIME)])
     return result
 
 
