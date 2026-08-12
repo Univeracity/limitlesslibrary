@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import copy
+import json
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 LEGACY_PROTOCOL_VERSION = "2025-03-26"
@@ -11,6 +14,193 @@ PROTOCOL_VERSION_META_KEY = "io.modelcontextprotocol/protocolVersion"
 CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo"
 CLIENT_CAPABILITIES_META_KEY = "io.modelcontextprotocol/clientCapabilities"
 SERVER_INFO_META_KEY = "io.modelcontextprotocol/serverInfo"
+
+
+class McpToolCallError(ValueError):
+    """A tool request was validly framed but could not produce content."""
+
+
+class McpToolDispatcher:
+    """Dual-era MCP envelope for one bounded, synchronous tool catalog.
+
+    The caller owns schemas, business validation, and side effects. This class
+    owns only discovery/list/call protocol envelopes and never starts a
+    transport, reads environment state, or grants tool authority.
+    """
+
+    def __init__(
+        self,
+        *,
+        server_name: str,
+        server_version: str,
+        instructions: str,
+        tools: Sequence[Mapping[str, Any]],
+        call_tool: Callable[[str, dict[str, Any]], Mapping[str, Any]],
+        ttl_ms: int = 3_600_000,
+        cache_scope: str = "public",
+    ) -> None:
+        if not server_name.strip() or not server_version.strip() or not instructions.strip():
+            raise ValueError("MCP server name, version, and instructions are required")
+        if isinstance(ttl_ms, bool) or not isinstance(ttl_ms, int) or ttl_ms <= 0:
+            raise ValueError("MCP ttl_ms must be a positive integer")
+        if cache_scope not in {"public", "private"}:
+            raise ValueError("MCP cache_scope must be public or private")
+        normalized: list[dict[str, Any]] = []
+        names: set[str] = set()
+        for raw in tools:
+            tool = copy.deepcopy(dict(raw))
+            name = tool.get("name")
+            if (
+                set(tool) != {"name", "description", "inputSchema", "outputSchema"}
+                or not isinstance(name, str)
+                or not name
+                or name in names
+                or not isinstance(tool.get("description"), str)
+                or not tool["description"]
+                or not isinstance(tool.get("inputSchema"), dict)
+                or not isinstance(tool.get("outputSchema"), dict)
+            ):
+                raise ValueError("MCP tools must be unique, complete schema descriptors")
+            names.add(name)
+            normalized.append(tool)
+        if not normalized:
+            raise ValueError("MCP tool catalog must not be empty")
+        if not callable(call_tool):
+            raise ValueError("MCP call_tool must be callable")
+        self.server_name = server_name.strip()
+        self.server_version = server_version.strip()
+        self.instructions = instructions.strip()
+        self.tools = tuple(normalized)
+        self._tool_names = frozenset(names)
+        self.call_tool = call_tool
+        self.ttl_ms = ttl_ms
+        self.cache_scope = cache_scope
+
+    def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
+        """Handle one strict-decoded JSON-RPC request without session state."""
+
+        if has_modern_metadata(message):
+            error = modern_request_error(message)
+            if error is not None:
+                return error
+            return self._modern(message)
+        return self._legacy(message)
+
+    def _modern(self, message: dict[str, Any]) -> dict[str, Any]:
+        message_id = message["id"]
+        method = message.get("method")
+        if method == "server/discover":
+            return jsonrpc_result(
+                message_id,
+                {
+                    "resultType": "complete",
+                    "supportedVersions": list(SUPPORTED_PROTOCOL_VERSIONS),
+                    "capabilities": {"tools": {"listChanged": False}},
+                    "instructions": self.instructions,
+                    "ttlMs": self.ttl_ms,
+                    "cacheScope": self.cache_scope,
+                    "_meta": {
+                        SERVER_INFO_META_KEY: {
+                            "name": self.server_name,
+                            "version": self.server_version,
+                        }
+                    },
+                },
+            )
+        if method == "tools/list":
+            return jsonrpc_result(
+                message_id,
+                {
+                    "resultType": "complete",
+                    "tools": copy.deepcopy(list(self.tools)),
+                    "ttlMs": self.ttl_ms,
+                    "cacheScope": self.cache_scope,
+                },
+            )
+        if method == "tools/call":
+            call_error = self._call_request_error(message)
+            if call_error is not None:
+                return call_error
+            return jsonrpc_result(message_id, self._call(message, modern=True))
+        return jsonrpc_error(message_id, -32601, f"method not found: {method}")
+
+    def _legacy(self, message: dict[str, Any]) -> dict[str, Any] | None:
+        message_id = message.get("id")
+        method = message.get("method")
+        if method == "notifications/initialized":
+            return None
+        if method == "initialize":
+            params = message.get("params")
+            requested = params.get("protocolVersion") if isinstance(params, dict) else None
+            if requested != LEGACY_PROTOCOL_VERSION:
+                return jsonrpc_error(
+                    message_id,
+                    -32602,
+                    f"unsupported protocolVersion; expected {LEGACY_PROTOCOL_VERSION}",
+                )
+            return jsonrpc_result(
+                message_id,
+                {
+                    "protocolVersion": LEGACY_PROTOCOL_VERSION,
+                    "capabilities": {"tools": {"listChanged": False}},
+                    "serverInfo": {"name": self.server_name, "version": self.server_version},
+                    "instructions": self.instructions,
+                },
+            )
+        if method == "tools/list":
+            return jsonrpc_result(message_id, {"tools": copy.deepcopy(list(self.tools))})
+        if method == "tools/call":
+            call_error = self._call_request_error(message)
+            if call_error is not None:
+                return call_error
+            return jsonrpc_result(message_id, self._call(message, modern=False))
+        return jsonrpc_error(message_id, -32601, f"method not found: {method}") if "id" in message else None
+
+    def _call(self, message: dict[str, Any], *, modern: bool) -> dict[str, Any]:
+        params = message["params"]
+        name = params.get("name")
+        arguments = params.get("arguments")
+        try:
+            structured = self.call_tool(name, copy.deepcopy(arguments))
+        except McpToolCallError as error:
+            return _tool_error(str(error), modern=modern)
+        if not isinstance(structured, Mapping):
+            raise TypeError("MCP call_tool must return an object")
+        payload: dict[str, Any] = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(structured, separators=(",", ":"), sort_keys=True),
+                }
+            ],
+            "structuredContent": copy.deepcopy(dict(structured)),
+            "isError": False,
+        }
+        if modern:
+            payload["resultType"] = "complete"
+        return payload
+
+    def _call_request_error(self, message: dict[str, Any]) -> dict[str, Any] | None:
+        params = message.get("params")
+        if not isinstance(params, dict):
+            return jsonrpc_error(message.get("id"), -32602, "tools/call requires object params")
+        if params.get("name") not in self._tool_names or not isinstance(params.get("arguments"), dict):
+            return jsonrpc_error(
+                message.get("id"),
+                -32602,
+                "tools/call requires one listed tool and object arguments",
+            )
+        return None
+
+
+def _tool_error(message: str, *, modern: bool) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "content": [{"type": "text", "text": message}],
+        "isError": True,
+    }
+    if modern:
+        result["resultType"] = "complete"
+    return result
 
 
 def jsonrpc_error(message_id: Any, code: int, message: str, *, data: dict[str, Any] | None = None) -> dict[str, Any]:

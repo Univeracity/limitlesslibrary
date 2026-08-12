@@ -14,12 +14,10 @@ from .catalog import CatalogError, LocalCatalog
 from .contracts import strict_json_loads
 from .mcp_protocol import (
     LEGACY_PROTOCOL_VERSION,
-    MODERN_PROTOCOL_VERSION,
-    SERVER_INFO_META_KEY,
+    McpToolCallError,
+    McpToolDispatcher,
     has_modern_metadata,
     jsonrpc_error,
-    jsonrpc_result,
-    modern_request_error,
 )
 from .schemas import load_schema
 
@@ -38,97 +36,22 @@ def _tool() -> dict[str, Any]:
     }
 
 
-def _modern(registry: LocalCatalog, message: dict[str, Any]) -> dict[str, Any]:
-    error = modern_request_error(message)
-    if error is not None:
-        return error
-    message_id = message["id"]
-    method = message.get("method")
-    if method == "server/discover":
-        return jsonrpc_result(
-            message_id,
-            {
-                "resultType": "complete",
-                "supportedVersions": [MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION],
-                "capabilities": {"tools": {"listChanged": False}},
-                "instructions": SERVER_INSTRUCTIONS,
-                "ttlMs": 3600000,
-                "cacheScope": "public",
-                "_meta": {SERVER_INFO_META_KEY: {"name": SERVER_NAME, "version": __version__}},
-            },
-        )
-    if method == "tools/list":
-        return jsonrpc_result(
-            message_id,
-            {"resultType": "complete", "tools": [_tool()], "ttlMs": 3600000, "cacheScope": "public"},
-        )
-    if method == "tools/call":
-        params = message["params"]
-        if params.get("name") != TOOL_NAME or not isinstance(params.get("arguments"), dict):
-            return jsonrpc_error(message_id, -32602, f"tools/call requires {TOOL_NAME} arguments")
-        try:
-            decision = registry.query(params["arguments"])
-        except CatalogError as error:
-            return jsonrpc_result(
-                message_id,
-                {"resultType": "complete", "content": [{"type": "text", "text": str(error)}], "isError": True},
-            )
-        return jsonrpc_result(
-            message_id,
-            {
-                "resultType": "complete",
-                "content": [{"type": "text", "text": json.dumps(decision, sort_keys=True)}],
-                "structuredContent": decision,
-                "isError": False,
-            },
-        )
-    return jsonrpc_error(message_id, -32601, f"method not found: {method}")
-
-
 def handle_message(registry: LocalCatalog, message: dict[str, Any]) -> dict[str, Any] | None:
-    if has_modern_metadata(message):
-        return _modern(registry, message)
-    message_id = message.get("id")
-    method = message.get("method")
-    if method == "notifications/initialized":
-        return None
-    if method == "initialize":
-        params = message.get("params")
-        requested = params.get("protocolVersion") if isinstance(params, dict) else None
-        if requested != LEGACY_PROTOCOL_VERSION:
-            return jsonrpc_error(message_id, -32602, f"unsupported protocolVersion; expected {LEGACY_PROTOCOL_VERSION}")
-        return jsonrpc_result(
-            message_id,
-            {
-                "protocolVersion": LEGACY_PROTOCOL_VERSION,
-                "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": SERVER_NAME, "version": __version__},
-                "instructions": SERVER_INSTRUCTIONS,
-            },
-        )
-    if method == "tools/list":
-        return jsonrpc_result(message_id, {"tools": [_tool()]})
-    if method == "tools/call":
-        params = message.get("params")
-        if (
-            not isinstance(params, dict)
-            or params.get("name") != TOOL_NAME
-            or not isinstance(params.get("arguments"), dict)
-        ):
-            return jsonrpc_error(message_id, -32602, f"tools/call requires {TOOL_NAME} arguments")
+    def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if name != TOOL_NAME:
+            raise McpToolCallError("tool is not available")
         try:
-            decision = registry.query(params["arguments"])
+            return registry.query(arguments)
         except CatalogError as error:
-            return jsonrpc_result(message_id, {"content": [{"type": "text", "text": str(error)}], "isError": True})
-        return jsonrpc_result(
-            message_id,
-            {
-                "content": [{"type": "text", "text": json.dumps(decision, sort_keys=True)}],
-                "structuredContent": decision,
-                "isError": False,
-            },
-        )
-    return jsonrpc_error(message_id, -32601, f"method not found: {method}") if "id" in message else None
+            raise McpToolCallError(str(error)) from error
+
+    return McpToolDispatcher(
+        server_name=SERVER_NAME,
+        server_version=__version__,
+        instructions=SERVER_INSTRUCTIONS,
+        tools=[_tool()],
+        call_tool=call_tool,
+    ).handle(message)
 
 
 def _bounded_lines(stream: Any) -> Iterator[tuple[str | None, str | None]]:

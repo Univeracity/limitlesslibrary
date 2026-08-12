@@ -8,7 +8,13 @@ import pytest
 from limitless_library.catalog import LocalCatalog
 from limitless_library.connector import ConnectorError, McpStdioConnector, validate_connector_decision
 from limitless_library.contracts import load_json
-from limitless_library.mcp_protocol import LEGACY_PROTOCOL_VERSION, MODERN_PROTOCOL_VERSION, modern_metadata
+from limitless_library.mcp_protocol import (
+    LEGACY_PROTOCOL_VERSION,
+    MODERN_PROTOCOL_VERSION,
+    McpToolCallError,
+    McpToolDispatcher,
+    modern_metadata,
+)
 from limitless_library.mcp_server import SERVER_INSTRUCTIONS, TOOL_NAME, handle_message
 
 ROOT = Path(__file__).parents[1]
@@ -50,6 +56,77 @@ def test_legacy_initialize_preserves_query_first_instructions() -> None:
     )
 
     assert response["result"]["instructions"] == SERVER_INSTRUCTIONS
+
+
+def test_generic_dispatcher_keeps_modern_and_legacy_tools_on_one_handler() -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def call_tool(name: str, arguments: dict[str, object]) -> dict[str, object]:
+        calls.append((name, arguments))
+        return {"echo": arguments["value"]}
+
+    dispatcher = McpToolDispatcher(
+        server_name="fixture",
+        server_version="1",
+        instructions="Inspect only; execute nothing.",
+        tools=[
+            {
+                "name": "fixture_echo",
+                "description": "Echo one fixture value.",
+                "inputSchema": {"type": "object"},
+                "outputSchema": {"type": "object"},
+            }
+        ],
+        call_tool=call_tool,
+        cache_scope="private",
+    )
+    modern = dispatcher.handle(
+        _message("tools/call", {"name": "fixture_echo", "arguments": {"value": "modern"}})
+    )
+    legacy = dispatcher.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "fixture_echo", "arguments": {"value": "legacy"}},
+        }
+    )
+
+    assert modern["result"]["resultType"] == "complete"
+    assert modern["result"]["structuredContent"] == {"echo": "modern"}
+    assert "resultType" not in legacy["result"]
+    assert legacy["result"]["structuredContent"] == {"echo": "legacy"}
+    assert calls == [("fixture_echo", {"value": "modern"}), ("fixture_echo", {"value": "legacy"})]
+
+
+def test_generic_dispatcher_returns_tool_error_without_hiding_protocol_success() -> None:
+    def fail(_name: str, _arguments: dict[str, object]) -> dict[str, object]:
+        raise McpToolCallError("held by fixture policy")
+
+    dispatcher = McpToolDispatcher(
+        server_name="fixture",
+        server_version="1",
+        instructions="Inspect only.",
+        tools=[
+            {
+                "name": "fixture_hold",
+                "description": "Return a held fixture result.",
+                "inputSchema": {"type": "object"},
+                "outputSchema": {"type": "object"},
+            }
+        ],
+        call_tool=fail,
+    )
+    response = dispatcher.handle(
+        _message("tools/call", {"name": "fixture_hold", "arguments": {}})
+    )
+
+    assert response["result"]["isError"] is True
+    assert response["result"]["content"][0]["text"] == "held by fixture policy"
+    invalid = dispatcher.handle(
+        _message("tools/call", {"name": "unlisted", "arguments": {}})
+    )
+    assert invalid["error"]["code"] == -32602
 
 
 def test_bounded_stdio_connector_validates_request_binding() -> None:
