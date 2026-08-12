@@ -127,6 +127,9 @@ class McpToolDispatcher:
         return jsonrpc_error(message_id, -32601, f"method not found: {method}")
 
     def _legacy(self, message: dict[str, Any]) -> dict[str, Any] | None:
+        request_error = legacy_request_error(message)
+        if request_error is not None:
+            return request_error
         message_id = message.get("id")
         method = message.get("method")
         if method == "notifications/initialized":
@@ -295,4 +298,34 @@ def modern_request_error(message: dict[str, Any]) -> dict[str, Any] | None:
         and bool(client["version"])
     ):
         return jsonrpc_error(message_id, -32600, "clientInfo requires non-empty name and version")
+    return None
+
+
+def legacy_request_error(message: dict[str, Any]) -> dict[str, Any] | None:
+    """Reject malformed initialization-era requests before tool dispatch."""
+
+    message_id = message.get("id")
+    method = message.get("method")
+    if message.get("jsonrpc") != "2.0" or not isinstance(method, str) or not method:
+        return jsonrpc_error(message_id, -32600, "legacy requests require JSON-RPC 2.0 and a method")
+    if "id" in message and (
+        message_id is None or isinstance(message_id, (bool, list, dict))
+    ):
+        return jsonrpc_error(
+            message_id,
+            -32600,
+            "legacy request id must be a string or number",
+        )
+    if method in {"initialize", "tools/list", "tools/call"} and "id" not in message:
+        return jsonrpc_error(
+            None,
+            -32600,
+            "legacy MCP request methods require an id",
+        )
+    if method == "notifications/initialized" and "id" in message:
+        return jsonrpc_error(
+            message_id,
+            -32600,
+            "legacy initialized notification must not include an id",
+        )
     return None

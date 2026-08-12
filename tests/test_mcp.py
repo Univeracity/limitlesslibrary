@@ -182,6 +182,57 @@ def test_generic_session_requires_initialize_but_keeps_modern_stateless(
     assert admitted["result"]["structuredContent"] == {"era": "initialized"}
 
 
+def test_legacy_session_rejects_malformed_envelopes_before_tool_dispatch() -> None:
+    calls: list[dict[str, object]] = []
+    dispatcher = McpToolDispatcher(
+        server_name="fixture",
+        server_version="1",
+        instructions="Inspect only.",
+        tools=[
+            {
+                "name": "fixture_echo",
+                "description": "Echo a fixture object.",
+                "inputSchema": {"type": "object"},
+                "outputSchema": {"type": "object"},
+            }
+        ],
+        call_tool=lambda _name, arguments: calls.append(arguments) or arguments,
+    )
+    session = McpToolSession(dispatcher)
+
+    malformed_initialize = session.handle(
+        {
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": STABLE_PROTOCOL_VERSION},
+        }
+    )
+    still_held = session.handle(
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+    )
+    initialized = session.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "initialize",
+            "params": {"protocolVersion": STABLE_PROTOCOL_VERSION},
+        }
+    )
+    invalid_id = session.handle(
+        {"jsonrpc": "2.0", "id": True, "method": "tools/list", "params": {}}
+    )
+    missing_id = session.handle(
+        {"jsonrpc": "2.0", "method": "tools/call", "params": {}}
+    )
+
+    assert malformed_initialize["error"]["code"] == -32600
+    assert still_held["error"]["code"] == -32600
+    assert initialized["result"]["protocolVersion"] == STABLE_PROTOCOL_VERSION
+    assert invalid_id["error"]["code"] == -32600
+    assert missing_id["error"]["code"] == -32600
+    assert calls == []
+
+
 def test_bounded_stdio_connector_validates_request_binding() -> None:
     command = [sys.executable, "-m", "limitless_library.mcp_server", "--catalog", str(CATALOG_PATH)]
     with McpStdioConnector(command, environment={"PYTHONPATH": str(ROOT / "src")}) as connector:
