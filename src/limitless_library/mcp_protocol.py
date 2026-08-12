@@ -193,6 +193,37 @@ class McpToolDispatcher:
         return None
 
 
+class McpToolSession:
+    """Track only the initialization state required by legacy MCP clients.
+
+    Modern MCP remains stateless and bypasses this bit. The session carries no
+    tool, tenant, credential, or authorization state.
+    """
+
+    def __init__(self, dispatcher: McpToolDispatcher) -> None:
+        if not isinstance(dispatcher, McpToolDispatcher):
+            raise TypeError("MCP session requires an McpToolDispatcher")
+        self.dispatcher = dispatcher
+        self.legacy_initialized = False
+
+    def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
+        if has_modern_metadata(message):
+            return self.dispatcher.handle(message)
+        method = message.get("method")
+        if method == "initialize":
+            response = self.dispatcher.handle(message)
+            if isinstance(response, dict) and "result" in response:
+                self.legacy_initialized = True
+            return response
+        if not self.legacy_initialized:
+            return jsonrpc_error(
+                message.get("id"),
+                -32600,
+                "legacy MCP requires initialize first",
+            )
+        return self.dispatcher.handle(message)
+
+
 def _tool_error(message: str, *, modern: bool) -> dict[str, Any]:
     result: dict[str, Any] = {
         "content": [{"type": "text", "text": message}],

@@ -13,10 +13,9 @@ from . import __version__
 from .catalog import CatalogError, LocalCatalog
 from .contracts import strict_json_loads
 from .mcp_protocol import (
-    LEGACY_PROTOCOL_VERSION,
     McpToolCallError,
     McpToolDispatcher,
-    has_modern_metadata,
+    McpToolSession,
     jsonrpc_error,
 )
 from .schemas import load_schema
@@ -37,6 +36,10 @@ def _tool() -> dict[str, Any]:
 
 
 def handle_message(registry: LocalCatalog, message: dict[str, Any]) -> dict[str, Any] | None:
+    return _dispatcher(registry).handle(message)
+
+
+def _dispatcher(registry: LocalCatalog) -> McpToolDispatcher:
     def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if name != TOOL_NAME:
             raise McpToolCallError("tool is not available")
@@ -51,7 +54,7 @@ def handle_message(registry: LocalCatalog, message: dict[str, Any]) -> dict[str,
         instructions=SERVER_INSTRUCTIONS,
         tools=[_tool()],
         call_tool=call_tool,
-    ).handle(message)
+    )
 
 
 def _bounded_lines(stream: Any) -> Iterator[tuple[str | None, str | None]]:
@@ -79,7 +82,7 @@ def main() -> None:
     except CatalogError as error:
         print(f"cannot load catalog: {error}", file=sys.stderr)
         raise SystemExit(2) from error
-    legacy_initialized = False
+    session = McpToolSession(_dispatcher(catalog))
     for line, framing_error in _bounded_lines(sys.stdin.buffer):
         if framing_error:
             response = jsonrpc_error(None, -32700, framing_error)
@@ -88,13 +91,7 @@ def main() -> None:
                 message = strict_json_loads(line)
                 if not isinstance(message, dict):
                     raise TypeError("JSON-RPC message must be an object")
-                method = message.get("method")
-                if not has_modern_metadata(message) and not legacy_initialized and method != "initialize":
-                    response = jsonrpc_error(message.get("id"), -32600, "legacy MCP requires initialize first")
-                else:
-                    response = handle_message(catalog, message)
-                    if method == "initialize" and isinstance(response, dict) and "result" in response:
-                        legacy_initialized = True
+                response = session.handle(message)
             except (TypeError, ValueError, CatalogError) as error:
                 response = jsonrpc_error(None, -32700, str(error))
         if response is not None:

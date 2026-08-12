@@ -13,6 +13,7 @@ from limitless_library.mcp_protocol import (
     MODERN_PROTOCOL_VERSION,
     McpToolCallError,
     McpToolDispatcher,
+    McpToolSession,
     modern_metadata,
 )
 from limitless_library.mcp_server import SERVER_INSTRUCTIONS, TOOL_NAME, handle_message
@@ -127,6 +128,48 @@ def test_generic_dispatcher_returns_tool_error_without_hiding_protocol_success()
         _message("tools/call", {"name": "unlisted", "arguments": {}})
     )
     assert invalid["error"]["code"] == -32602
+
+
+def test_generic_session_requires_legacy_initialize_but_keeps_modern_stateless() -> None:
+    dispatcher = McpToolDispatcher(
+        server_name="fixture",
+        server_version="1",
+        instructions="Inspect only.",
+        tools=[
+            {
+                "name": "fixture_echo",
+                "description": "Echo a fixture object.",
+                "inputSchema": {"type": "object"},
+                "outputSchema": {"type": "object"},
+            }
+        ],
+        call_tool=lambda _name, arguments: arguments,
+    )
+    session = McpToolSession(dispatcher)
+    legacy_call = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": "fixture_echo", "arguments": {"era": "legacy"}},
+    }
+    held = session.handle(legacy_call)
+    modern = session.handle(
+        _message("tools/call", {"name": "fixture_echo", "arguments": {"era": "modern"}}, 2)
+    )
+    initialized = session.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "initialize",
+            "params": {"protocolVersion": LEGACY_PROTOCOL_VERSION},
+        }
+    )
+    admitted = session.handle(legacy_call)
+
+    assert held["error"]["code"] == -32600
+    assert modern["result"]["structuredContent"] == {"era": "modern"}
+    assert initialized["result"]["protocolVersion"] == LEGACY_PROTOCOL_VERSION
+    assert admitted["result"]["structuredContent"] == {"era": "legacy"}
 
 
 def test_bounded_stdio_connector_validates_request_binding() -> None:
