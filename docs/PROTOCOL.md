@@ -37,9 +37,10 @@ requests carry `io.modelcontextprotocol/protocolVersion=2026-07-28`, client
 capabilities, and optional client information in `params._meta`. The server
 implements `server/discover`, `tools/list`, and `tools/call` independently.
 
-The `2025-06-18` and legacy `2025-03-26` modes require `initialize` before tool
-requests, and the server echoes the admitted revision. Client or server
-identity metadata is diagnostic and never an authorization input.
+The `2025-06-18` and legacy `2025-03-26` modes require a successful
+`initialize` followed by `notifications/initialized` before tool requests, and
+the server echoes the admitted revision. Client or server identity metadata is
+diagnostic and never an authorization input.
 
 The MCP tool returns the decision as `structuredContent` and as canonical JSON
 text for clients that consume text content. Artifact bytes never cross MCP.

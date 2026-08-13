@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -33,12 +36,29 @@ def _message(method: str, params: dict[str, object], message_id: int = 1) -> dic
     }
 
 
+def _initialize_message(protocol_version: str, message_id: int = 1) -> dict[str, object]:
+    return {
+        "jsonrpc": "2.0",
+        "id": message_id,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": protocol_version,
+            "capabilities": {},
+            "clientInfo": {"name": "limitless-library-tests", "version": "1"},
+        },
+    }
+
+
 def test_modern_mcp_discovers_and_queries_one_structured_tool() -> None:
     catalog = LocalCatalog(CATALOG_PATH)
     discovery = handle_message(catalog, _message("server/discover", {}))
     assert discovery["result"]["supportedVersions"][0] == MODERN_PROTOCOL_VERSION
     listing = handle_message(catalog, _message("tools/list", {}, 2))
     assert [tool["name"] for tool in listing["result"]["tools"]] == [TOOL_NAME]
+    assert listing["result"]["tools"][0]["annotations"] == {
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
     response = handle_message(
         catalog,
         _message("tools/call", {"name": TOOL_NAME, "arguments": load_json(REQUEST)}, 3),
@@ -50,16 +70,25 @@ def test_modern_mcp_discovers_and_queries_one_structured_tool() -> None:
 def test_initialize_eras_preserve_query_first_instructions(protocol_version: str) -> None:
     response = handle_message(
         LocalCatalog(CATALOG_PATH),
-        {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {"protocolVersion": protocol_version},
-        },
+        _initialize_message(protocol_version),
     )
 
     assert response["result"]["protocolVersion"] == protocol_version
     assert response["result"]["instructions"] == SERVER_INSTRUCTIONS
+
+
+def test_initialize_rejects_missing_required_client_fields() -> None:
+    response = handle_message(
+        LocalCatalog(CATALOG_PATH),
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": STABLE_PROTOCOL_VERSION},
+        },
+    )
+
+    assert response["error"]["code"] == -32602
 
 
 def test_generic_dispatcher_keeps_modern_and_legacy_tools_on_one_handler() -> None:
@@ -167,18 +196,19 @@ def test_generic_session_requires_initialize_but_keeps_modern_stateless(
         _message("tools/call", {"name": "fixture_echo", "arguments": {"era": "modern"}}, 2)
     )
     initialized = session.handle(
-        {
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "initialize",
-            "params": {"protocolVersion": protocol_version},
-        }
+        _initialize_message(protocol_version, 3)
+    )
+    still_held = session.handle(initialization_call)
+    initialized_notification = session.handle(
+        {"jsonrpc": "2.0", "method": "notifications/initialized"}
     )
     admitted = session.handle(initialization_call)
 
     assert held["error"]["code"] == -32600
     assert modern["result"]["structuredContent"] == {"era": "modern"}
     assert initialized["result"]["protocolVersion"] == protocol_version
+    assert still_held["error"]["code"] == -32600
+    assert initialized_notification is None
     assert admitted["result"]["structuredContent"] == {"era": "initialized"}
 
 
@@ -211,12 +241,10 @@ def test_legacy_session_rejects_malformed_envelopes_before_tool_dispatch() -> No
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
     )
     initialized = session.handle(
-        {
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "initialize",
-            "params": {"protocolVersion": STABLE_PROTOCOL_VERSION},
-        }
+        _initialize_message(STABLE_PROTOCOL_VERSION, 3)
+    )
+    ready = session.handle(
+        {"jsonrpc": "2.0", "method": "notifications/initialized"}
     )
     invalid_id = session.handle(
         {"jsonrpc": "2.0", "id": True, "method": "tools/list", "params": {}}
@@ -228,9 +256,99 @@ def test_legacy_session_rejects_malformed_envelopes_before_tool_dispatch() -> No
     assert malformed_initialize["error"]["code"] == -32600
     assert still_held["error"]["code"] == -32600
     assert initialized["result"]["protocolVersion"] == STABLE_PROTOCOL_VERSION
+    assert ready is None
     assert invalid_id["error"]["code"] == -32600
     assert missing_id["error"]["code"] == -32600
     assert calls == []
+
+
+def test_legacy_session_ignores_notifications_without_responses() -> None:
+    dispatcher = McpToolDispatcher(
+        server_name="fixture",
+        server_version="1",
+        instructions="Inspect only.",
+        tools=[
+            {
+                "name": "fixture_echo",
+                "description": "Echo a fixture object.",
+                "inputSchema": {"type": "object"},
+                "outputSchema": {"type": "object"},
+            }
+        ],
+        call_tool=lambda _name, arguments: arguments,
+    )
+    session = McpToolSession(dispatcher)
+
+    pre_initialize = session.handle(
+        {"jsonrpc": "2.0", "method": "notifications/initialized"}
+    )
+    cancellation = session.handle(
+        {"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {}}
+    )
+    initialized = session.handle(_initialize_message(STABLE_PROTOCOL_VERSION))
+    final_notification = session.handle(
+        {"jsonrpc": "2.0", "method": "notifications/initialized"}
+    )
+
+    assert pre_initialize is None
+    assert cancellation is None
+    assert initialized["result"]["protocolVersion"] == STABLE_PROTOCOL_VERSION
+    assert final_notification is None
+
+
+def test_mcp_rejects_unexpected_tools_list_cursors() -> None:
+    modern = handle_message(LocalCatalog(CATALOG_PATH), _message("tools/list", {"cursor": "unexpected"}))
+    dispatcher = McpToolDispatcher(
+        server_name="fixture",
+        server_version="1",
+        instructions="Inspect only.",
+        tools=[
+            {
+                "name": "fixture_echo",
+                "description": "Echo a fixture object.",
+                "inputSchema": {"type": "object"},
+                "outputSchema": {"type": "object"},
+            }
+        ],
+        call_tool=lambda _name, arguments: arguments,
+    )
+    legacy = dispatcher.handle(
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {"cursor": "unexpected"}}
+    )
+
+    assert modern["error"]["code"] == -32602
+    assert legacy["error"]["code"] == -32602
+
+
+def test_modern_mcp_rejects_non_string_method() -> None:
+    message = _message("tools/list", {})
+    message["method"] = 7
+
+    response = handle_message(LocalCatalog(CATALOG_PATH), message)
+
+    assert response["error"]["code"] == -32600
+
+
+def test_mcp_text_content_is_strict_canonical_json() -> None:
+    dispatcher = McpToolDispatcher(
+        server_name="fixture",
+        server_version="1",
+        instructions="Inspect only.",
+        tools=[
+            {
+                "name": "fixture_echo",
+                "description": "Echo a fixture object.",
+                "inputSchema": {"type": "object"},
+                "outputSchema": {"type": "object"},
+            }
+        ],
+        call_tool=lambda _name, _arguments: {"value": "caf\u00e9", "z": 1},
+    )
+
+    response = dispatcher.handle(_message("tools/call", {"name": "fixture_echo", "arguments": {}}))
+
+    assert response["result"]["content"][0]["text"] == '{"value":"caf\u00e9","z":1}'
+    assert response["result"]["structuredContent"] == {"value": "caf\u00e9", "z": 1}
 
 
 def test_bounded_stdio_connector_validates_request_binding() -> None:
@@ -239,6 +357,37 @@ def test_bounded_stdio_connector_validates_request_binding() -> None:
         decision = connector.query(load_json(REQUEST))
     assert decision["decision"] == "reuse"
     assert decision["selected"]["offer"]["id"] == "offer:hello-python-exact"
+
+
+def test_stdio_server_completes_initialization_era_lifecycle() -> None:
+    request = load_json(REQUEST)
+    messages = [
+        _initialize_message(STABLE_PROTOCOL_VERSION),
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": TOOL_NAME, "arguments": request},
+        },
+    ]
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT / "src")
+    completed = subprocess.run(
+        [sys.executable, "-m", "limitless_library.mcp_server", "--catalog", str(CATALOG_PATH)],
+        input="".join(json.dumps(message) + "\n" for message in messages),
+        capture_output=True,
+        check=True,
+        encoding="utf-8",
+        env=environment,
+    )
+    responses = [json.loads(line) for line in completed.stdout.splitlines()]
+
+    assert [response["id"] for response in responses] == [1, 2, 3]
+    assert responses[0]["result"]["protocolVersion"] == STABLE_PROTOCOL_VERSION
+    assert responses[1]["result"]["tools"][0]["name"] == TOOL_NAME
+    assert responses[2]["result"]["structuredContent"]["decision"] == "reuse"
 
 
 def test_modern_mcp_rejects_wrong_protocol_version() -> None:

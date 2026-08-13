@@ -29,9 +29,14 @@ SERVER_INSTRUCTIONS = "Query before material work; locally verify any selected b
 def _tool() -> dict[str, Any]:
     return {
         "name": TOOL_NAME,
+        "title": "Query before work",
         "description": "Select one permissioned exact component or source-free method, or abstain.",
         "inputSchema": load_schema("query-0.1.schema.json"),
         "outputSchema": load_schema("decision-0.1.schema.json"),
+        "annotations": {
+            "readOnlyHint": True,
+            "openWorldHint": False,
+        },
     }
 
 
