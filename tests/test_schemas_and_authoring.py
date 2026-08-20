@@ -4,6 +4,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+
 from limitless_library.catalog import LocalCatalog, seal_capsule
 from limitless_library.contracts import load_json
 from limitless_library.schemas import load_schema

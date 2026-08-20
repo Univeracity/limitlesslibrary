@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from limitless_library.catalog import LocalCatalog
 from limitless_library.connector import ConnectorError, McpStdioConnector, validate_connector_decision
 from limitless_library.contracts import load_json

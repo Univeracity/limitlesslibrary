@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+
 from limitless_library.catalog import CatalogError, LocalCatalog
 from limitless_library.contracts import load_json, sha256_json, without
 

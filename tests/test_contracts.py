@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from limitless_library.contracts import ContractError, relative_path, strict_json_loads, write_new_json
 
 

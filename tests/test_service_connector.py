@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from limitless_library.contracts import canonical_json_bytes, load_json
 from limitless_library.service_connector import (
     ServiceConnector,

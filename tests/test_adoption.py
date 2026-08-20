@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+
 from limitless_library.catalog import LocalCatalog
 from limitless_library.contracts import load_json, sha256_file
 from limitless_library.installer import AdoptionError, adopt_exact_component, seal_recipe
