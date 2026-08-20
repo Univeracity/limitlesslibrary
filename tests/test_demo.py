@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from limitless_library import demo_assets
 from limitless_library.catalog import seal_capsule
 from limitless_library.contracts import load_json

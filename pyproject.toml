@@ -11,7 +11,10 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{name = "Limitless Library"}]
-dependencies = ["jsonschema>=4.18,<5"]
+dependencies = [
+  "cryptography>=42,<47",
+  "jsonschema>=4.18,<5",
+]
 keywords = ["agents", "mcp", "provenance", "reuse", "verification"]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
@@ -45,6 +48,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "limitless_library" = ["py.typed"]
+"limitless_library.conformance" = ["*.json"]
 "limitless_library.schemas" = ["*.json"]
 "limitless_library.demo_assets" = [
   "authoring/*.json",

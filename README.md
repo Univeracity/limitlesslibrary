@@ -18,6 +18,7 @@
   <a href="#quick-start">Quick start</a> ·
   <a href="#how-verified-reuse-works">Lifecycle</a> ·
   <a href="#mcp">MCP</a> ·
+  <a href="#optional-managed-service">Service</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -49,6 +50,7 @@ work was actually used.
 | **Fail-closed verification** | No network, inherited secrets, or unsandboxed verifier fallback |
 | **Observed use** | Delivery is not counted as reuse until receiver code invokes the supplied component |
 | **Local by default** | The reference lifecycle needs no account, hosted service, or model API |
+| **Inspectable service trust** | The optional connector pins service authority, policy, protocol, and signed results |
 
 ## Quick start
 
@@ -134,6 +136,8 @@ candidate exists, Limitless abstains without disclosing one.
 - Exact-byte, no-overwrite installation with rollback on failure.
 - Receiver-owned adherence and obligation verification under Bubblewrap.
 - Python embedding and bounded stdio MCP connector surfaces.
+- Versioned managed-service wire contracts, signed conformance corpora, and an
+  explicitly configured HTTPS connector.
 - Authoring and sealing commands, a one-command demo, conformance fixtures,
   and tests.
 
@@ -174,6 +178,25 @@ receiver-local operation.
 Python callers can use `query_local(...)` or `McpStdioConnector`. See
 [Protocol](docs/PROTOCOL.md).
 
+## Optional managed service
+
+Local use remains the default. When an owner deliberately supplies a service
+profile, the same open client can query a managed public, organization, or
+exchange collection without downloading that collection. The profile pins the
+endpoint, service identity, Ed25519 trust root, accepted policy digest,
+data-use mode, and maximum scopes.
+
+```bash
+limitless service-inspect --profile ./service-profile.json
+limitless service-query --profile ./service-profile.json --request ./service-query.json
+```
+
+The client validates root rotation, signed discovery, policy continuity, query
+binding, compatibility, and the signed result before returning it. Remote
+failure yields control back to local reuse. Connecting never publishes a local
+capsule or silently installs selected work. See the
+[managed-service connector](docs/MANAGED-SERVICE.md).
+
 ## Authoring
 
 The checked-in `examples/authoring` records omit derived digests. Seal them
@@ -199,6 +222,7 @@ Outputs are immutable: both commands refuse to overwrite an existing path.
 | --- | --- |
 | [Local demo](docs/LOCAL-DEMO.md) | Evidence map and manual inspection |
 | [Protocol](docs/PROTOCOL.md) | Local API and MCP contract |
+| [Managed-service connector](docs/MANAGED-SERVICE.md) | Explicit endpoint, trust, policy, and query boundary |
 | [Trust model](docs/TRUST-MODEL.md) | Security boundaries and failure behavior |
 | [Conformance](docs/CONFORMANCE.md) | Required outcomes and fixture expectations |
 | [Open-source foundation](docs/OPEN-SOURCE-FOUNDATION.md) | Relationship between the open implementation and product |
@@ -206,10 +230,12 @@ Outputs are immutable: both commands refuse to overwrite an existing path.
 
 ## Status and security
 
-This is a pre-alpha reference implementation. It is intentionally local,
-single-operator, and Linux-only for contained verification. It is not yet a
-remote trust system or package manager, and technical integration is not
-treated as product adoption.
+This is a pre-alpha reference implementation. The complete reuse lifecycle is
+intentionally local, single-operator, and Linux-only for contained
+verification. The optional connector verifies a remote service's public wire
+authority, but this repository does not implement hosted identity, ranking,
+storage, or multi-tenant coordination. Technical integration is not treated as
+product adoption.
 
 There is deliberately no unsandboxed verifier fallback. Querying and method
 selection work without Bubblewrap; exact adoption fails closed if containment

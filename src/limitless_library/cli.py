@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -12,6 +13,11 @@ from .contracts import ContractError, load_json, write_new_json
 from .demo import DemoError, format_demo, run_demo
 from .installer import AdoptionError, adopt_exact_component, seal_recipe, validate_recipe
 from .sandbox import containment_readiness
+from .service_connector import (
+    ServiceConnector,
+    ServiceConnectorError,
+    ServiceProfile,
+)
 
 
 def _print(value: dict[str, object]) -> None:
@@ -43,6 +49,17 @@ def _format_doctor(result: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def _service_connector(profile_path: Path) -> ServiceConnector:
+    try:
+        profile = ServiceProfile.from_json(
+            load_json(profile_path),
+            access_token=os.environ.get("LIMITLESS_SERVICE_TOKEN"),
+        )
+    except (ContractError, ValueError) as error:
+        raise ServiceConnectorError("service profile is invalid") from error
+    return ServiceConnector(profile)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -61,6 +78,23 @@ def _parser() -> argparse.ArgumentParser:
     query.add_argument("--catalog", type=Path, required=True)
     query.add_argument("--request", type=Path, required=True)
     query.add_argument("--output", type=Path)
+
+    service_inspect = subparsers.add_parser(
+        "service-inspect",
+        help="verify an explicitly configured managed-service profile",
+    )
+    service_inspect.add_argument("--profile", type=Path, required=True)
+
+    service_query = subparsers.add_parser(
+        "service-query",
+        help="submit and verify one explicitly opted-in managed query",
+    )
+    service_query.add_argument("--profile", type=Path, required=True)
+    service_query.add_argument("--request", type=Path)
+    service_query.add_argument("--objective")
+    service_query.add_argument("--receiver", type=Path)
+    service_query.add_argument("--request-id")
+    service_query.add_argument("--output", type=Path)
 
     capsule = subparsers.add_parser("seal-capsule", help="bind a capsule draft to exact payload bytes")
     capsule.add_argument("--draft", type=Path, required=True)
@@ -112,6 +146,37 @@ def main() -> None:
                 write_new_json(args.output, decision)
             else:
                 _print(decision)
+        elif args.command == "service-inspect":
+            connector = _service_connector(args.profile)
+            verified = connector.inspect()
+            _print(
+                {
+                    "status": "connected",
+                    "profile": connector.profile.public_summary(),
+                    "policy": verified.discovery["dataUsePolicy"],
+                    "resultVersions": verified.discovery["resultVersions"],
+                    "expiresAt": verified.discovery["expiresAt"],
+                }
+            )
+        elif args.command == "service-query":
+            connector = _service_connector(args.profile)
+            if args.request is not None:
+                if any(item is not None for item in (args.objective, args.receiver, args.request_id)):
+                    raise ServiceConnectorError("--request cannot be combined with query-building arguments")
+                request = load_json(args.request)
+            else:
+                if not args.objective or args.receiver is None or not args.request_id:
+                    raise ServiceConnectorError("use --request, or provide --objective, --receiver, and --request-id")
+                request = connector.build_query(
+                    request_id=args.request_id,
+                    objective=args.objective,
+                    receiver_context=load_json(args.receiver),
+                )
+            result = connector.query(request)
+            if args.output:
+                write_new_json(args.output, result)
+            else:
+                _print(result)
         elif args.command == "seal-capsule":
             write_new_json(args.output, seal_capsule(load_json(args.draft), args.root))
         elif args.command == "seal-recipe":
@@ -129,7 +194,13 @@ def main() -> None:
                 receipt_path=args.receipt,
             )
             _print(receipt)
-    except (AdoptionError, CatalogError, ContractError, DemoError) as error:
+    except (
+        AdoptionError,
+        CatalogError,
+        ContractError,
+        DemoError,
+        ServiceConnectorError,
+    ) as error:
         print(f"limitless: {error}", file=sys.stderr)
         raise SystemExit(2) from error
 

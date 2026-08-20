@@ -6,6 +6,16 @@ from .catalog import CatalogError, LocalCatalog, seal_capsule
 from .connector import ConnectorError, McpStdioConnector, query_local
 from .installer import AdoptionError, adopt_exact_component, seal_recipe, validate_recipe
 from .mcp_protocol import McpToolCallError, McpToolDispatcher, McpToolSession
+from .service_connector import (
+    ServiceConnector,
+    ServiceConnectorError,
+    ServiceHttpResponse,
+    ServiceProfile,
+    ServiceTransport,
+    ServiceUnavailableError,
+    UrllibServiceTransport,
+    VerifiedService,
+)
 
 __all__ = [
     "AdoptionError",
@@ -16,6 +26,14 @@ __all__ = [
     "McpToolCallError",
     "McpToolDispatcher",
     "McpToolSession",
+    "ServiceConnector",
+    "ServiceConnectorError",
+    "ServiceHttpResponse",
+    "ServiceProfile",
+    "ServiceTransport",
+    "ServiceUnavailableError",
+    "UrllibServiceTransport",
+    "VerifiedService",
     "adopt_exact_component",
     "query_local",
     "seal_capsule",

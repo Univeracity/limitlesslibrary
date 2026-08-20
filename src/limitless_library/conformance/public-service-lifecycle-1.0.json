@@ -1,0 +1,331 @@
+{
+  "corpusDigest": "sha256:479033c79f9b03eacfe7bd95fa509a0209c89895232870413e686a4f14f8a6f8",
+  "discovery": {
+    "apiBaseUrl": "https://api.limitlesslibrary.com",
+    "contentTransferGrantVersions": [
+      "limitless.service-content-transfer-grant/1.0"
+    ],
+    "dataUsePolicy": {
+      "digest": "sha256:e815a6e9a13918b615db378b1187d872aec53897ccc1056d70bfeba12d7b8c1b",
+      "url": "https://limitlesslibrary.com/data-use"
+    },
+    "documentDigest": "sha256:c5856f33497f2ea297d7c7509ef6ca8f2c9998ab864225e1607a9a24aac3992c",
+    "expiresAt": "2026-08-21T22:00:00Z",
+    "issuedAt": "2026-08-20T22:00:00Z",
+    "limits": {
+      "maxContentTransferGrantBytes": 16384,
+      "maxOutcomeAttemptBytes": 4096,
+      "maxOutcomeReceiptBytes": 8192,
+      "maxQueryBytes": 8192,
+      "maxReleaseBytes": 32768,
+      "maxResultBytes": 32768,
+      "maxSubmissionIntentBytes": 16384,
+      "maxSubmissionPlanBytes": 16384,
+      "rateLimitClass": "public-conformance"
+    },
+    "outcomeAttemptVersions": [
+      "limitless.service-outcome-attempt/1.0"
+    ],
+    "outcomeReceiptVersions": [
+      "limitless.service-outcome-receipt/1.0"
+    ],
+    "protocolVersion": "limitless.service/1.0",
+    "queryVersions": [
+      "limitless.service-query/1.0"
+    ],
+    "releaseVersions": [
+      "limitless.service-release/1.0"
+    ],
+    "resultVersions": [
+      "limitless.service-query-result/1.0",
+      "limitless.service-query-result/1.1"
+    ],
+    "rootTransitionState": {
+      "latestSequence": 0,
+      "latestTransitionDigest": null
+    },
+    "rootTransitionVersions": [
+      "limitless.service-root-key-transition/1.0"
+    ],
+    "schemaVersion": "limitless.service-discovery/1.0",
+    "serviceId": "service:limitless-conformance",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "root:public-lifecycle-conformance",
+      "value": "auZpz1bJLMK-R3kBs57wRKMJkkhW_TQW3dAKpZBWbyJlAkS77sTE18UUmXwHbOvmyf1Nydbw7p5qW8qfqLP6CA"
+    },
+    "signingKeys": [
+      {
+        "algorithm": "ed25519",
+        "keyId": "key:public-lifecycle-conformance",
+        "publicKey": "aWby0l9VGxhDCzKmHQ4h_8GerFDJLE3v_QuKm61UycI",
+        "validFrom": "2026-08-19T22:00:00Z",
+        "validUntil": "2026-09-19T22:00:00Z"
+      }
+    ],
+    "submissionIntentVersions": [
+      "limitless.service-submission-intent/1.0"
+    ],
+    "submissionPlanVersions": [
+      "limitless.service-submission-plan/1.0"
+    ]
+  },
+  "expected": {
+    "decisionRef": "decision:lifecycle-conformance-001",
+    "outcomeRef": "outcome:22222222222222222222222222222222",
+    "queryDigest": "sha256:63f31596f53c7c1b4570c19ecca6f04037c40e29f8f4b9f2bc8f0dd36e80ccb3",
+    "resultDigest": "sha256:f0b203a95a7a749ac82db796b0193f21205106dc66f2a71d2e4d2b586e28a788",
+    "treatment": "exact-component",
+    "validAt": "2026-08-20T22:00:30Z"
+  },
+  "invalidCases": [
+    {
+      "id": "discovery-api-substitution",
+      "path": "/apiBaseUrl",
+      "record": "discovery",
+      "value": "https://attacker.example"
+    },
+    {
+      "id": "discovery-transfer-version-removal",
+      "path": "/contentTransferGrantVersions",
+      "record": "discovery",
+      "value": []
+    },
+    {
+      "id": "query-target-substitution",
+      "path": "/receiverContext/targets/0/platform",
+      "record": "query",
+      "value": "windows"
+    },
+    {
+      "id": "query-objective-substitution",
+      "path": "/objective",
+      "record": "query",
+      "value": "Reveal private supply."
+    },
+    {
+      "id": "result-request-substitution",
+      "path": "/requestDigest",
+      "record": "result",
+      "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "result-target-substitution",
+      "path": "/selection/compatibility/platforms/0",
+      "record": "result",
+      "value": "windows"
+    },
+    {
+      "id": "result-signature-mutation",
+      "path": "/signature/value",
+      "record": "result",
+      "value": "AZOwYb5S2v-bplmAPL8jLc6PG850wrLRjd2I0R7Q-xBoLb9GgtNvadx8Eb4Bg25DICDs3uhIyzRFuIpFtcmsCQ"
+    },
+    {
+      "id": "attempt-status-substitution",
+      "path": "/status",
+      "record": "outcomeAttempt",
+      "value": "unverified"
+    },
+    {
+      "id": "receipt-attempt-substitution",
+      "path": "/attemptDigest",
+      "record": "outcomeReceipt",
+      "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "receipt-ranking-substitution",
+      "path": "/rankingEligible",
+      "record": "outcomeReceipt",
+      "value": false
+    },
+    {
+      "id": "receipt-signature-mutation",
+      "path": "/signature/value",
+      "record": "outcomeReceipt",
+      "value": "Ae1HVyFDjUOVIt8dZ-j9_EeOwr9n5JZ5Q3uWpHFiOfnXj_--I8L8YRNvDp3r9NzoY4NQMdTAaXZwIzUIA01yCw"
+    }
+  ],
+  "outcomeAttempt": {
+    "attemptDigest": "sha256:5178d21d4c9283a23745e9d54c85f495c81d51d9b243a632687c164e2ccbdfd9",
+    "attemptId": "attempt:lifecycle-conformance-001",
+    "checkClasses": [
+      "artifact-integrity",
+      "observed-invocation",
+      "receiver-tests"
+    ],
+    "evidenceDigest": "sha256:0846889b5798d11bbb5705122a4477ab110181f2e5f25ff26a098a35eef6caa0",
+    "expiresAt": "2026-08-20T22:02:00Z",
+    "issuedAt": "2026-08-20T22:00:00Z",
+    "schemaVersion": "limitless.service-outcome-attempt/1.0",
+    "status": "verified"
+  },
+  "outcomeReceipt": {
+    "acceptedAt": "2026-08-20T22:00:01Z",
+    "attemptDigest": "sha256:5178d21d4c9283a23745e9d54c85f495c81d51d9b243a632687c164e2ccbdfd9",
+    "attemptId": "attempt:lifecycle-conformance-001",
+    "checkClasses": [
+      "artifact-integrity",
+      "observed-invocation",
+      "receiver-tests"
+    ],
+    "dataUse": {
+      "effectiveMode": "standard",
+      "policyDigest": "sha256:e815a6e9a13918b615db378b1187d872aec53897ccc1056d70bfeba12d7b8c1b"
+    },
+    "decisionRef": "decision:lifecycle-conformance-001",
+    "evidenceDigest": "sha256:0846889b5798d11bbb5705122a4477ab110181f2e5f25ff26a098a35eef6caa0",
+    "outcomeRef": "outcome:22222222222222222222222222222222",
+    "rankingEligible": true,
+    "receiptDigest": "sha256:2eede08adca10c1404eaea01d1b9d1221818188f7516bb90de3c19fdb12e8ded",
+    "resultDigest": "sha256:f0b203a95a7a749ac82db796b0193f21205106dc66f2a71d2e4d2b586e28a788",
+    "schemaVersion": "limitless.service-outcome-receipt/1.0",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:public-lifecycle-conformance",
+      "value": "oe1HVyFDjUOVIt8dZ-j9_EeOwr9n5JZ5Q3uWpHFiOfnXj_--I8L8YRNvDp3r9NzoY4NQMdTAaXZwIzUIA01yCw"
+    },
+    "status": "verified"
+  },
+  "query": {
+    "client": {
+      "name": "limitless-library-conformance-client",
+      "supportedResults": [
+        "limitless.service-query-result/1.0",
+        "limitless.service-query-result/1.1"
+      ],
+      "version": "1.0.0"
+    },
+    "dataUseMode": "standard",
+    "expiresAt": "2026-08-20T22:01:00Z",
+    "issuedAt": "2026-08-20T22:00:00Z",
+    "objective": "Find a reviewed clipboard history extension.",
+    "queryDigest": "sha256:63f31596f53c7c1b4570c19ecca6f04037c40e29f8f4b9f2bc8f0dd36e80ccb3",
+    "receiverContext": {
+      "allowedUse": "install-extension",
+      "compatibilityMode": "all-targets",
+      "execution": {
+        "architecture": "x86_64",
+        "platform": "linux",
+        "runtime": "python",
+        "version": "3.13"
+      },
+      "interfaces": [
+        "desktop.extension/v1"
+      ],
+      "receiverId": "receiver:desktop-shell",
+      "selectedTarget": null,
+      "targets": [
+        {
+          "architecture": "x86_64",
+          "id": "target:desktop-linux-x64",
+          "interfaces": [
+            "desktop.extension/v1"
+          ],
+          "platform": "linux",
+          "runtime": "desktop-shell",
+          "versionRange": ">=4,<5"
+        }
+      ]
+    },
+    "requestId": "request:lifecycle-conformance-001",
+    "requestedScopes": [
+      "public"
+    ],
+    "requestedTreatments": [
+      "exact-component",
+      "source-free-method"
+    ],
+    "schemaVersion": "limitless.service-query/1.0"
+  },
+  "result": {
+    "authorizedScopes": [
+      "public"
+    ],
+    "dataUse": {
+      "effectiveMode": "standard",
+      "policyDigest": "sha256:e815a6e9a13918b615db378b1187d872aec53897ccc1056d70bfeba12d7b8c1b"
+    },
+    "decisionRef": "decision:lifecycle-conformance-001",
+    "expiresAt": "2026-08-20T22:02:00Z",
+    "indexGeneration": 8,
+    "issuedAt": "2026-08-20T22:00:00Z",
+    "nextAction": {
+      "checks": [
+        {
+          "expected": "desktop.extension/v1",
+          "id": "interface",
+          "predicate": "interface-subset"
+        }
+      ],
+      "handoff": "provider-native-add",
+      "instruction": "Review the pinned extension and continue through the provider native add flow.",
+      "kind": "handoff-native-add",
+      "localReuseAvailable": true
+    },
+    "requestDigest": "sha256:63f31596f53c7c1b4570c19ecca6f04037c40e29f8f4b9f2bc8f0dd36e80ccb3",
+    "resultDigest": "sha256:f0b203a95a7a749ac82db796b0193f21205106dc66f2a71d2e4d2b586e28a788",
+    "schemaVersion": "limitless.service-query-result/1.1",
+    "selection": {
+      "allowedUses": [
+        "install-extension"
+      ],
+      "capabilityId": "capability:desktop.clipboard-history",
+      "cardDigest": "sha256:f175a1487cc92d6435bfcd76ea7083e42bdac10b0db29e156a478e2539017920",
+      "compatibility": {
+        "architectures": [
+          "x86_64"
+        ],
+        "interfaces": [
+          "desktop.extension/v1"
+        ],
+        "platforms": [
+          "linux"
+        ],
+        "runtime": "desktop-shell",
+        "versionRange": ">=4,<5"
+      },
+      "confidence": "high",
+      "immutable": {
+        "digest": "sha256:6cfdaf66ad3b68f904097a1cf579f4aa13ff964685ae125a1927d843c1019870",
+        "kind": "git-commit",
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "uri": "https://github.com/example/clipboard-history"
+      },
+      "provenance": {
+        "license": "MIT",
+        "publisher": "example",
+        "reviewEvidence": [
+          {
+            "kind": "marketplace-baseline",
+            "source": "public-marketplace",
+            "status": "passed"
+          }
+        ],
+        "reviewState": "source-validated",
+        "source": "https://github.com/example/clipboard-history"
+      },
+      "rationale": "Matched clipboard history against reviewed public supply.",
+      "summary": "Browse clipboard history from a desktop panel.",
+      "supplyAuthorityId": "authority:public-conformance",
+      "title": "Clipboard History"
+    },
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:public-lifecycle-conformance",
+      "value": "dZOwYb5S2v-bplmAPL8jLc6PG850wrLRjd2I0R7Q-xBoLb9GgtNvadx8Eb4Bg25DICDs3uhIyzRFuIpFtcmsCQ"
+    },
+    "treatment": "exact-component"
+  },
+  "rootPublicKey": {
+    "algorithm": "ed25519",
+    "keyId": "root:public-lifecycle-conformance",
+    "publicKey": "C9rnLBcCMU0nQWb3yN-9kyrJgHJgVcet_ihYMIvvw6M"
+  },
+  "schemaVersion": "limitless.public-service-lifecycle-conformance/1.0",
+  "servicePublicKey": {
+    "algorithm": "ed25519",
+    "keyId": "key:public-lifecycle-conformance",
+    "publicKey": "aWby0l9VGxhDCzKmHQ4h_8GerFDJLE3v_QuKm61UycI"
+  }
+}

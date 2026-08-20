@@ -1,5 +1,6 @@
 include LICENSE NOTICE README.md SECURITY.md CONTRIBUTING.md CODE_OF_CONDUCT.md CHANGELOG.md
 recursive-include src/limitless_library/schemas *.json
+recursive-include src/limitless_library/conformance *.json
 recursive-include src/limitless_library/demo_assets *.json *.py
 include src/limitless_library/py.typed
 recursive-include examples *.json *.py *.md

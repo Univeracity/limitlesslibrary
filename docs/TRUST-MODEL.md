@@ -8,6 +8,13 @@ responsibility. The receiver owns installation targets and verifier programs.
 The local stdio MCP command is an operator-selected process, not an
 authenticated remote service.
 
+An optional managed-service profile is a separate trust boundary. The operator
+pins its exact HTTPS endpoint, service identity, Ed25519 root key, accepted
+data-use policy digest, mode, and scopes. The client validates dual-signed root
+rotation, current discovery, result-key lifetime, and exact query/result
+binding. TLS protects transport; the pinned root authenticates service
+content.
+
 ## Enforced properties
 
 - Strict JSON rejects duplicate keys and non-finite values.
@@ -35,8 +42,11 @@ An operator authorization flag is an explicit assertion, not an identity
 system. A technical adoption receipt does not mean a human owner accepted a
 production dependency or would pay for the service.
 
-The alpha has no signature, revocation distribution, remote endpoint identity,
-multi-tenant isolation, or supply-chain transparency log. Do not use it as a
+The local catalog has no publisher signature, revocation distribution,
+multi-tenant isolation, or supply-chain transparency log. The optional service
+connector validates remote endpoint and result authority but does not itself
+implement the service's identity, revocation, tenancy, or publication systems.
+Do not treat a local capsule declaration or a merely reachable endpoint as a
 security boundary between mutually distrusting parties.
 
 ## Failure behavior
@@ -45,3 +55,8 @@ Missing containment, changed bytes, stale decisions, changed verifier files,
 unsafe paths, ambiguity, policy mismatch, incompatible toolchains, malformed
 results, and failed receiver checks stop the lifecycle. There is no host-run
 fallback and no partial-success receipt.
+
+For an opted-in service, redirects, root-chain gaps, expired discovery,
+unknown result keys, policy drift, query rebinding, incompatible selections,
+and malformed responses also fail closed. Availability and rate-limit failures
+return control to local reuse without fabricating a selection.

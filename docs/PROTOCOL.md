@@ -44,3 +44,23 @@ diagnostic and never an authorization input.
 
 The MCP tool returns the decision as `structuredContent` and as canonical JSON
 text for clients that consume text content. Artifact bytes never cross MCP.
+
+## Managed-service façade
+
+The optional service connector uses the versioned public records implemented
+in `limitless_library.service_contracts`:
+
+- `limitless.service-query/1.0`;
+- `limitless.service-query-result/1.0` and `1.1`;
+- `limitless.service-discovery/1.0`;
+- `limitless.service-root-key-transition/1.0` and its bounded set;
+- outcome attempt/receipt `1.0`; and
+- submission, transfer-grant, and immutable-release `1.0` contracts.
+
+The packaged `limitless_library.conformance` corpora contain signed positive
+vectors and declared negative mutations for the query lifecycle and root-key
+rotation. These records are the public compatibility surface; private ranking,
+identity, policy evaluation, persistence, and deployment records are not.
+
+See [Managed-service connector](MANAGED-SERVICE.md) for the profile and HTTPS
+boundary.

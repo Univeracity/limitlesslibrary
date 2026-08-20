@@ -16,3 +16,6 @@
   retainable evidence.
 - One-command source launcher, actionable containment diagnostics, and a clean
   first-use verification gate.
+- Opt-in managed-service profile, bounded HTTPS connector, pinned root and
+  rotation validation, policy binding, signed query-result verification, and
+  packaged language-neutral conformance corpora.

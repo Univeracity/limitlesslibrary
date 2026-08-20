@@ -1,0 +1,100 @@
+{
+  "corpusDigest": "sha256:b6367e19514f6836c37c8495dc54256239206750c6da105b48fbcbca4f3b10e1",
+  "expected": {
+    "currentRootKey": {
+      "algorithm": "ed25519",
+      "keyId": "root:limitless-conformance-2",
+      "publicKey": "Kay64UG8yvCyLhqU000LxzYeUm0L_hLIl5S8kyKWbdc"
+    },
+    "effectiveAt": "2026-09-01T16:00:00Z",
+    "latestSequence": 1,
+    "latestTransitionDigest": "sha256:37a21ddf182ae2398a764ef18006aae318fb115984f0b523bbea47a5622fe259",
+    "serviceId": "service:limitless-conformance"
+  },
+  "invalidCases": [
+    {
+      "id": "transition-service-substitution",
+      "path": "/transitions/0/serviceId",
+      "value": "service:attacker"
+    },
+    {
+      "id": "transition-sequence-skip",
+      "path": "/transitions/0/sequence",
+      "value": 2
+    },
+    {
+      "id": "transition-key-reuse",
+      "path": "/transitions/0/nextRootKey/publicKey",
+      "value": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+    },
+    {
+      "id": "authorization-signature-mutation",
+      "path": "/transitions/0/signatures/authorization/value",
+      "value": "Ay20bB4Ce5CFBFxVyGouY4BoW-FkxOPCw8gTm9vS5rlBkINBejjuMpVFf0XoZuqLfCsx5qydYxtWMW4QF67NAg"
+    },
+    {
+      "id": "acceptance-signature-mutation",
+      "path": "/transitions/0/signatures/acceptance/value",
+      "value": "ABHqJa-cRUpX2eWOuW99Wx3Mc01bnFg-Rldtui9LegpuyhKOPn2VW-4yaqHaGDzE0Odrl6TGrdCR7ogBjnqtBA"
+    },
+    {
+      "id": "transition-set-tip-truncation",
+      "path": "/latestSequence",
+      "value": 0
+    },
+    {
+      "id": "transition-set-digest-substitution",
+      "path": "/latestTransitionDigest",
+      "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "record": {
+    "latestSequence": 1,
+    "latestTransitionDigest": "sha256:37a21ddf182ae2398a764ef18006aae318fb115984f0b523bbea47a5622fe259",
+    "schemaVersion": "limitless.service-root-key-transition-set/1.0",
+    "serviceId": "service:limitless-conformance",
+    "transitions": [
+      {
+        "effectiveAt": "2026-09-01T16:00:00Z",
+        "issuedAt": "2026-08-20T16:00:00Z",
+        "nextRootKey": {
+          "algorithm": "ed25519",
+          "keyId": "root:limitless-conformance-2",
+          "publicKey": "Kay64UG8yvCyLhqU000LxzYeUm0L_hLIl5S8kyKWbdc",
+          "validFrom": "2026-09-01T16:00:00Z",
+          "validUntil": "2029-08-19T16:00:00Z"
+        },
+        "previousRootKey": {
+          "algorithm": "ed25519",
+          "keyId": "root:limitless-conformance-1",
+          "publicKey": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+          "validFrom": "2025-08-20T16:00:00Z",
+          "validUntil": "2027-08-20T16:00:00Z"
+        },
+        "previousTransitionDigest": null,
+        "schemaVersion": "limitless.service-root-key-transition/1.0",
+        "sequence": 1,
+        "serviceId": "service:limitless-conformance",
+        "signatures": {
+          "acceptance": {
+            "algorithm": "ed25519",
+            "keyId": "root:limitless-conformance-2",
+            "value": "mBHqJa-cRUpX2eWOuW99Wx3Mc01bnFg-Rldtui9LegpuyhKOPn2VW-4yaqHaGDzE0Odrl6TGrdCR7ogBjnqtBA"
+          },
+          "authorization": {
+            "algorithm": "ed25519",
+            "keyId": "root:limitless-conformance-1",
+            "value": "Hy20bB4Ce5CFBFxVyGouY4BoW-FkxOPCw8gTm9vS5rlBkINBejjuMpVFf0XoZuqLfCsx5qydYxtWMW4QF67NAg"
+          }
+        },
+        "transitionDigest": "sha256:37a21ddf182ae2398a764ef18006aae318fb115984f0b523bbea47a5622fe259"
+      }
+    ]
+  },
+  "schemaVersion": "limitless.public-service-root-transition-conformance/1.0",
+  "trustedRootKey": {
+    "algorithm": "ed25519",
+    "keyId": "root:limitless-conformance-1",
+    "publicKey": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+  }
+}
