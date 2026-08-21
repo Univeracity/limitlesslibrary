@@ -126,6 +126,11 @@ def _parser() -> argparse.ArgumentParser:
     service_query.add_argument("--receiver", type=Path)
     service_query.add_argument("--request-id")
     service_query.add_argument("--output", type=Path)
+    service_query.add_argument(
+        "--artifact-output",
+        type=Path,
+        help="fetch a selected exact artifact into this new file",
+    )
 
     capsule = subparsers.add_parser("seal-capsule", help="bind a capsule draft to exact payload bytes")
     capsule.add_argument("--draft", type=Path, required=True)
@@ -209,9 +214,18 @@ def main() -> None:
                     receiver_context=load_json(args.receiver),
                 )
             result = connector.query(request)
+            staged = None
+            if args.artifact_output:
+                staged = connector.fetch_selected_artifact(
+                    query=request,
+                    result=result,
+                    destination=args.artifact_output,
+                )
             if args.output:
                 write_new_json(args.output, result)
-            else:
+            if staged is not None:
+                _print(staged)
+            elif not args.output:
                 _print(result)
         elif args.command == "seal-capsule":
             write_new_json(args.output, seal_capsule(load_json(args.draft), args.root))

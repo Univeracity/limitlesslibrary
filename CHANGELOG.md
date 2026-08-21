@@ -25,3 +25,6 @@
   circle vocabulary, header-carried delivery authority, and legacy validation.
 - Account-free official-service registration and short-lived sessions using a
   service-specific installation key held separately from activation state.
+- Explicit exact-artifact continuation with header-only one-use authority,
+  bounded digest verification, owner-only no-overwrite staging, and a
+  nonsecret CLI result.

@@ -83,6 +83,33 @@ requested treatment. A timeout or availability response returns a distinct
 error so the caller can continue with local reuse or fresh work; it never
 fabricates a remote selection or silently weakens the accepted boundary.
 
+## Exact artifact continuation
+
+A current exact-component result can authorize one bounded artifact without
+placing its capability in a URL. The ordinary CLI can consume that result in
+the same invocation:
+
+```bash
+limitless service-query \
+  --request ./service-query.json \
+  --artifact-output ./selected.bin
+```
+
+The client revalidates the signed result against the exact query and current
+service keys, sends the one-use `Limitless-Capability` value and anonymous
+session bearer as headers, refuses redirects, query strings, compression, and
+responses larger than 128 KiB, and requires the octet-stream length and digest
+header to agree with the received bytes and signed selection. It then creates
+an owner-only file atomically and refuses to overwrite an existing path. The
+printed staging summary contains neither bearer nor delivery capability.
+
+The bounded client currently buffers the artifact before publishing it; the
+128 KiB ceiling makes that memory use explicit. Staging only preserves the
+verified handoff. A receiver or native provider must still interpret the
+signed `nextAction`, install under its own rules, verify locally, observe use,
+and decide whether to submit outcome evidence. A failed integrity check can
+consume the one-use capability but never publishes bytes to the destination.
+
 ## Advanced alternate profiles
 
 Operators building another compatible service can bypass the official
@@ -110,7 +137,7 @@ root-rotation behavior for other language implementations.
 ## Deliberate exclusions
 
 Connecting does not publish work, enumerate a workspace, upload a local
-catalog, install a returned component, hand off to a native provider, or submit
+catalog, install a staged component, hand off to a native provider, or submit
 local outcome evidence. Those are separate owner-authorized continuations. The
 service-side identity authority, managed implementation, ranking, persistence,
 analytics, and deployment remain outside this repository.

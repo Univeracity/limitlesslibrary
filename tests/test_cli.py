@@ -40,6 +40,20 @@ class _Connector:
     def query(self, request: dict[str, object]) -> dict[str, object]:
         return {"verifiedRequest": request}
 
+    def fetch_selected_artifact(
+        self,
+        *,
+        query: dict[str, object],
+        result: dict[str, object],
+        destination: Path,
+    ) -> dict[str, object]:
+        assert result == {"verifiedRequest": query}
+        destination.write_bytes(b"artifact")
+        return {
+            "schemaVersion": "limitless.staged-service-artifact/1.0",
+            "path": str(destination),
+        }
+
 
 def test_doctor_prints_readiness(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(sys, "argv", ["limitless", "doctor"])
@@ -181,3 +195,33 @@ def test_service_query_accepts_an_exact_request_and_writes_no_implicit_state(
     cli.main()
 
     assert json.loads(capsys.readouterr().out) == {"verifiedRequest": {"query": "bounded"}}
+
+
+def test_service_query_can_stage_an_exact_artifact_without_printing_the_raw_result(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "query.json"
+    artifact_path = tmp_path / "selected.bin"
+    request_path.write_text('{"query":"bounded"}', encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "limitless",
+            "service-query",
+            "--request",
+            str(request_path),
+            "--artifact-output",
+            str(artifact_path),
+        ],
+    )
+    monkeypatch.setattr(cli, "_service_connector", lambda _path: _Connector())
+
+    cli.main()
+
+    assert artifact_path.read_bytes() == b"artifact"
+    output = json.loads(capsys.readouterr().out)
+    assert output["schemaVersion"] == "limitless.staged-service-artifact/1.0"
+    assert output["path"] == str(artifact_path)

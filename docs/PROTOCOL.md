@@ -70,5 +70,13 @@ installation identity, and root-key rotation. These records are the public
 compatibility surface; private ranking, identity persistence, policy
 evaluation, service storage, and deployment records are not.
 
+Current exact-artifact selections carry a query-free HTTPS URI and one-use
+`Limitless-Capability` header value inside the signed result. Artifact bytes do
+not cross MCP or the JSON query response. The opt-in HTTPS continuation accepts
+at most 128 KiB of `application/octet-stream`, binds its length and digest to
+the signed selection, and stages it without overwrite. Receiver installation,
+verification, observed invocation, and outcome submission remain distinct
+events.
+
 See [Managed-service connector](MANAGED-SERVICE.md) for one-action official
 activation, advanced profiles, and the HTTPS boundary.

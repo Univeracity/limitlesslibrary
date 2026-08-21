@@ -18,6 +18,7 @@ from base64 import urlsafe_b64decode
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -30,7 +31,13 @@ from urllib.request import (
 )
 
 from ._service_support import decode_root_keys
-from .contracts import canonical_json_bytes, sha256_bytes, strict_json_loads
+from .contracts import (
+    ContractError,
+    canonical_json_bytes,
+    sha256_bytes,
+    strict_json_loads,
+    write_new_bytes,
+)
 from .installation_identity_contracts import (
     MAX_ATTESTATION_BYTES,
     MAX_SESSION_RESPONSE_BYTES,
@@ -62,6 +69,9 @@ _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9._:-]{0,199}$")
 _TOKEN = re.compile(r"^[\x21-\x7e]{16,4096}$")
 _JSON_CONTENT_TYPE = re.compile(r"^application/json(?:\s*;\s*charset=(?:utf-8|UTF-8))?$")
+_CONTENT_LENGTH = re.compile(r"^(?:0|[1-9][0-9]{0,6})$")
+_ARTIFACT_CONTENT_TYPE = "application/octet-stream"
+MAX_REMOTE_ARTIFACT_BYTES = 128 * 1024
 
 
 class ServiceConnectorError(RuntimeError):
@@ -340,9 +350,6 @@ class UrllibServiceTransport:
                     raise ServiceConnectorError("service content length is invalid") from error
                 if length < 0 or length > maximum_bytes:
                     raise ServiceConnectorError("service response exceeds its byte limit")
-            content_type = response_headers.get("content-type", "")
-            if status == 200 and _JSON_CONTENT_TYPE.fullmatch(content_type) is None:
-                raise ServiceConnectorError("service response content type is invalid")
             content = response.read(maximum_bytes + 1)
         finally:
             response.close()
@@ -407,6 +414,21 @@ class ServiceConnector:
             headers["authorization"] = f"Bearer {self.profile.access_token}"
         return headers
 
+    @staticmethod
+    def _response_headers(headers: Mapping[str, str]) -> dict[str, str]:
+        normalized: dict[str, str] = {}
+        for key, value in headers.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise ServiceConnectorError("service response header is invalid")
+            name = key.lower()
+            if name in normalized:
+                raise ServiceConnectorError("duplicate service response header is invalid")
+            normalized[name] = value
+        encoding = normalized.get("content-encoding")
+        if encoding not in {None, "identity"}:
+            raise ServiceConnectorError("compressed service responses are refused")
+        return normalized
+
     def _request_json(
         self,
         method: str,
@@ -438,6 +460,10 @@ class ServiceConnector:
             raise ServiceUnavailableError("managed service is unavailable; continue locally")
         if response.status != 200:
             raise ServiceConnectorError("managed service rejected the request")
+        response_headers = self._response_headers(response.headers)
+        content_type = response_headers.get("content-type", "")
+        if _JSON_CONTENT_TYPE.fullmatch(content_type) is None:
+            raise ServiceConnectorError("service response content type is invalid")
         try:
             value = strict_json_loads(response.body.decode("utf-8"))
         except (UnicodeError, json.JSONDecodeError, ValueError) as error:
@@ -611,6 +637,98 @@ class ServiceConnector:
             )
         except ValueError as error:
             raise ServiceConnectorError("service query result is invalid") from error
+
+    def fetch_selected_artifact(
+        self,
+        *,
+        query: dict[str, Any],
+        result: dict[str, Any],
+        destination: str | Path,
+    ) -> dict[str, Any]:
+        """Fetch one signed exact artifact into a new receiver-owned file."""
+
+        verified = self.inspect()
+        now = self._now()
+        try:
+            checked_query = validate_service_query(query, at=now)
+            checked_result = validate_service_query_result(
+                result,
+                public_keys=verified.result_keys,
+                expected_query=checked_query,
+                at=now,
+            )
+        except ValueError as error:
+            raise ServiceConnectorError("service artifact authority is invalid") from error
+        if (
+            service_query_execution_mode(checked_query) != self.profile.execution_mode
+            or service_query_history_mode(checked_query) != self.profile.history_mode
+            or not set(service_query_audiences(checked_query)).issubset(set(self.profile.requested_audiences))
+        ):
+            raise ServiceConnectorError("service query exceeds the opted-in profile")
+        if self.profile.access_token is None:
+            raise ServiceConnectorError("managed service authorization is required")
+        if checked_result["treatment"] != "exact-component":
+            raise ServiceConnectorError("service result does not select an exact component")
+        selection = checked_result["selection"]
+        immutable = selection.get("immutable")
+        if not isinstance(immutable, dict) or immutable.get("kind") != "artifact":
+            raise ServiceConnectorError("service result does not select a deliverable artifact")
+        authorization = immutable.get("authorization")
+        if not isinstance(authorization, dict):
+            raise ServiceConnectorError("service artifact authorization is unavailable")
+
+        response = self._transport.request(
+            "GET",
+            _request_url(immutable["uri"]),
+            headers={
+                "accept": _ARTIFACT_CONTENT_TYPE,
+                "authorization": f"Bearer {self.profile.access_token}",
+                "user-agent": "limitless-library/0.1.0a0",
+                authorization["header"]: authorization["value"],
+            },
+            body=None,
+            maximum_bytes=MAX_REMOTE_ARTIFACT_BYTES,
+            timeout_seconds=self._timeout_seconds,
+        )
+        if response.status in {401, 403}:
+            raise ServiceConnectorError("managed service artifact authorization failed")
+        if response.status in {429, 500, 502, 503, 504}:
+            raise ServiceUnavailableError("managed service is unavailable; continue locally")
+        if response.status != 200:
+            raise ServiceConnectorError("managed service rejected the artifact request")
+
+        headers = self._response_headers(response.headers)
+        if headers.get("content-type") != _ARTIFACT_CONTENT_TYPE:
+            raise ServiceConnectorError("service artifact content type is invalid")
+        declared = headers.get("content-length")
+        if declared is None or _CONTENT_LENGTH.fullmatch(declared) is None:
+            raise ServiceConnectorError("service artifact content length is invalid")
+        declared_length = int(declared)
+        if declared_length > MAX_REMOTE_ARTIFACT_BYTES or declared_length != len(response.body):
+            raise ServiceConnectorError("service artifact content length differs")
+        expected_digest = immutable["digest"]
+        if headers.get("x-limitless-artifact-digest") != expected_digest:
+            raise ServiceConnectorError("service artifact digest header differs")
+        if sha256_bytes(response.body) != expected_digest:
+            raise ServiceConnectorError("service artifact bytes differ from the signed result")
+
+        if not isinstance(destination, (str, Path)):
+            raise ServiceConnectorError("service artifact destination is invalid")
+        path = Path(destination)
+        try:
+            write_new_bytes(path, response.body)
+        except (ContractError, OSError, ValueError) as error:
+            raise ServiceConnectorError("service artifact could not be staged without overwrite") from error
+        return {
+            "schemaVersion": "limitless.staged-service-artifact/1.0",
+            "decisionRef": checked_result["decisionRef"],
+            "capabilityId": selection["capabilityId"],
+            "revision": immutable["revision"],
+            "digest": expected_digest,
+            "byteLength": declared_length,
+            "path": str(path),
+            "nextAction": checked_result["nextAction"],
+        }
 
     def build_query(
         self,

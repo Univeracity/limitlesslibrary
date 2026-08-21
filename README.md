@@ -194,6 +194,11 @@ for baseline public access.
 limitless service-activate
 limitless service-inspect
 limitless service-query --request ./service-query.json
+
+# When the verified result selects an exact artifact:
+limitless service-query \
+  --request ./service-query.json \
+  --artifact-output ./selected.bin
 ```
 
 Source builds without a published locator remain local-only; this repository
@@ -202,7 +207,11 @@ an owner-reviewed alternate profile with `--profile`. The client validates
 root rotation, signed discovery, policy continuity, query binding,
 compatibility, and the signed result before returning it. Remote failure yields
 control back to local reuse. Connecting never publishes a local capsule or
-silently installs selected work. See the
+silently installs selected work. Exact remote artifacts move only after the
+caller supplies `--artifact-output`: the client sends the signed one-use
+capability in a header, verifies the declared length and digest, and creates a
+new owner-only file without overwrite. Staging is not installation or proof of
+adoption. See the
 [managed-service connector](docs/MANAGED-SERVICE.md).
 
 ## Authoring
