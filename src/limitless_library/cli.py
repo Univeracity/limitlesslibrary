@@ -140,9 +140,9 @@ def _parser() -> argparse.ArgumentParser:
         help="local resumable state (defaults beside the draft)",
     )
     service_publish.add_argument(
-        "--accept-publication-policy",
-        action="store_true",
-        help="confirm review and acceptance of the service-advertised policy",
+        "--accept-publication-policy-digest",
+        required=True,
+        help="exact digest of the service-advertised policy reviewed for this submission",
     )
 
     publication_status_parser = subparsers.add_parser(
@@ -235,6 +235,7 @@ def main() -> None:
                     "status": "connected",
                     "profile": connector.profile.public_summary(),
                     "policy": verified.discovery["dataUsePolicy"],
+                    "publicationPolicy": verified.discovery.get("publicationPolicy"),
                     "resultVersions": verified.discovery["resultVersions"],
                     "expiresAt": verified.discovery["expiresAt"],
                 }
@@ -277,7 +278,7 @@ def main() -> None:
                     state_path=args.state,
                     signer=signer,
                     publisher=publisher,
-                    accept_publication_policy=args.accept_publication_policy,
+                    accepted_publication_policy_digest=args.accept_publication_policy_digest,
                 )
             )
         elif args.command in {

@@ -266,13 +266,16 @@ def publish_draft(
     state_path: Path | None,
     signer: InstallationSigner,
     publisher: dict[str, Any],
-    accept_publication_policy: bool,
+    accepted_publication_policy_digest: str,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Prepare once, resume safely, and publish only explicitly named bytes."""
 
-    if not accept_publication_policy:
-        raise PublicationError("review the advertised publication policy and pass --accept-publication-policy")
+    if (
+        not isinstance(accepted_publication_policy_digest, str)
+        or _DIGEST.fullmatch(accepted_publication_policy_digest) is None
+    ):
+        raise PublicationError("review the advertised publication policy and provide its exact accepted digest")
     if not isinstance(connector, ServiceConnector) or not isinstance(signer, InstallationSigner):
         raise PublicationError("publication authority is invalid")
     try:
@@ -296,6 +299,8 @@ def publish_draft(
     policy = verified.discovery.get("publicationPolicy")
     if not isinstance(policy, dict):
         raise PublicationError("service does not advertise public publication")
+    if policy.get("digest") != accepted_publication_policy_digest:
+        raise PublicationError("the advertised publication policy differs from the reviewed digest")
     current = datetime.now(tz=UTC) if now is None else now
     if not isinstance(current, datetime) or current.tzinfo is None:
         raise PublicationError("publication time is invalid")

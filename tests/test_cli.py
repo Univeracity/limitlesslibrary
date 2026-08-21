@@ -10,6 +10,8 @@ from limitless_library import cli
 
 
 class _Profile:
+    service_id = "service:example"
+
     def public_summary(self) -> dict[str, object]:
         return {
             "apiBaseUrl": "https://api.example",
@@ -30,6 +32,11 @@ class _Connector:
                     "dataUsePolicy": {
                         "url": "https://example.test/policy",
                         "digest": "sha256:" + "1" * 64,
+                    },
+                    "publicationPolicy": {
+                        "url": "https://example.test/publication-policy",
+                        "revision": "publication-2026-08",
+                        "digest": "sha256:" + "2" * 64,
                     },
                     "resultVersions": ["limitless.service-query-result/1.1"],
                     "expiresAt": "2026-08-21T00:00:00Z",
@@ -124,6 +131,48 @@ def test_service_inspect_exposes_the_effective_nonsecret_boundary(
     output = json.loads(capsys.readouterr().out)
     assert output["status"] == "connected"
     assert output["profile"]["defaultAudience"] == "private"
+    assert output["publicationPolicy"]["digest"] == "sha256:" + "2" * 64
+
+
+def test_service_publish_binds_the_exact_reviewed_policy_digest(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    draft = tmp_path / "publication.json"
+    digest = "sha256:" + "2" * 64
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "limitless",
+            "service-publish",
+            "--draft",
+            str(draft),
+            "--accept-publication-policy-digest",
+            digest,
+        ],
+    )
+    monkeypatch.setattr(cli, "activated_service_connector", lambda: _Connector())
+    monkeypatch.setattr(
+        cli,
+        "installation_publisher_authority",
+        lambda *, service_id: ("signer", {"publisherId": "installation:example"}),
+    )
+    monkeypatch.setattr(
+        cli,
+        "publish_draft",
+        lambda connector, **values: (
+            calls.append({"connector": connector, **values}) or {"schemaVersion": "limitless.publication-result/1.0"}
+        ),
+    )
+
+    cli.main()
+
+    assert calls[0]["accepted_publication_policy_digest"] == digest
+    assert calls[0]["draft_path"] == draft
+    assert json.loads(capsys.readouterr().out)["schemaVersion"] == "limitless.publication-result/1.0"
 
 
 def test_service_activation_is_one_action_and_prints_the_effective_boundary(

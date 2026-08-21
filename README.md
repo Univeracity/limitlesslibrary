@@ -204,7 +204,7 @@ limitless service-query \
 # After reviewing the advertised publication policy:
 limitless service-publish \
   --draft ./examples/publication/publication.draft.json \
-  --accept-publication-policy
+  --accept-publication-policy-digest "$REVIEWED_PUBLICATION_POLICY_DIGEST"
 
 # Follow the saved state path returned by publication:
 limitless service-publication-status \
@@ -213,6 +213,10 @@ limitless service-publication-status \
 limitless service-publication-revoke \
   --state ./examples/publication/publication.draft.json.state.json
 ```
+
+`REVIEWED_PUBLICATION_POLICY_DIGEST` is the exact
+`publicationPolicy.digest` returned by `service-inspect` after the user reviews
+its policy URL. Publication fails if signed discovery has since changed it.
 
 Source builds without a published locator remain local-only; this repository
 does not invent a live service identity. Advanced integrations may still pass

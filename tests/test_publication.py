@@ -287,7 +287,7 @@ def test_one_command_publication_is_resumable_and_cwd_independent(tmp_path: Path
         state_path=None,
         signer=signer,
         publisher=publisher,
-        accept_publication_policy=True,
+        accepted_publication_policy_digest=transport.policy["digest"],
         now=NOW,
     )
     state = Path(first["statePath"])
@@ -298,7 +298,7 @@ def test_one_command_publication_is_resumable_and_cwd_independent(tmp_path: Path
         state_path=None,
         signer=signer,
         publisher=publisher,
-        accept_publication_policy=True,
+        accepted_publication_policy_digest=transport.policy["digest"],
         now=NOW,
     )
 
@@ -312,18 +312,34 @@ def test_one_command_publication_is_resumable_and_cwd_independent(tmp_path: Path
     assert state.stat().st_mode & 0o777 == 0o600
 
 
-def test_publication_requires_explicit_policy_acceptance(tmp_path: Path) -> None:
+def test_publication_requires_exact_reviewed_policy_digest(tmp_path: Path) -> None:
     connector, _transport, signer, publisher = _fixture()
     draft = _write_draft(tmp_path)
 
-    with pytest.raises(PublicationError, match="accept-publication-policy"):
+    with pytest.raises(PublicationError, match="exact accepted digest"):
         publish_draft(
             connector,
             draft_path=draft,
             state_path=None,
             signer=signer,
             publisher=publisher,
-            accept_publication_policy=False,
+            accepted_publication_policy_digest="",
+            now=NOW,
+        )
+
+
+def test_publication_rejects_policy_drift_after_review(tmp_path: Path) -> None:
+    connector, _transport, signer, publisher = _fixture()
+    draft = _write_draft(tmp_path)
+
+    with pytest.raises(PublicationError, match="differs from the reviewed digest"):
+        publish_draft(
+            connector,
+            draft_path=draft,
+            state_path=None,
+            signer=signer,
+            publisher=publisher,
+            accepted_publication_policy_digest="sha256:" + "9" * 64,
             now=NOW,
         )
 
@@ -337,7 +353,7 @@ def test_status_and_revocation_resume_from_owner_only_state(tmp_path: Path) -> N
         state_path=None,
         signer=signer,
         publisher=publisher,
-        accept_publication_policy=True,
+        accepted_publication_policy_digest=transport.policy["digest"],
         now=NOW,
     )
     state = Path(published["statePath"])
@@ -374,7 +390,7 @@ def test_status_and_revocation_resume_from_owner_only_state(tmp_path: Path) -> N
 
 
 def test_followup_rejects_symlinked_or_tampered_state(tmp_path: Path) -> None:
-    connector, _transport, signer, publisher = _fixture()
+    connector, transport, signer, publisher = _fixture()
     draft = _write_draft(tmp_path)
     published = publish_draft(
         connector,
@@ -382,7 +398,7 @@ def test_followup_rejects_symlinked_or_tampered_state(tmp_path: Path) -> None:
         state_path=None,
         signer=signer,
         publisher=publisher,
-        accept_publication_policy=True,
+        accepted_publication_policy_digest=transport.policy["digest"],
         now=NOW,
     )
     state = Path(published["statePath"])

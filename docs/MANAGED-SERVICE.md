@@ -120,15 +120,22 @@ publication policy advertised by signed discovery:
 ```bash
 limitless service-publish \
   --draft ./examples/publication/publication.draft.json \
-  --accept-publication-policy
+  --accept-publication-policy-digest "$REVIEWED_PUBLICATION_POLICY_DIGEST"
 ```
+
+Set `REVIEWED_PUBLICATION_POLICY_DIGEST` to the exact
+`publicationPolicy.digest` returned by `service-inspect` after reviewing its
+policy URL. The submission fails closed if signed discovery has since changed
+that digest.
 
 The draft names only selected objects. Relative paths resolve from the draft's
 directory, never an assumed current working directory. On the first run the
-client hashes those regular files, binds their descriptors and the current
-anonymous publisher authority into a signed intent, and creates an immutable
-mode-0600 state file beside the draft. A retry reuses that intent and request
-identity, so an interrupted transfer cannot silently become another release.
+client first requires the exact reviewed digest to match the currently signed
+publication policy. It then hashes those regular files, binds their descriptors
+and the current anonymous publisher authority into a signed intent, and creates
+an immutable mode-0600 state file beside the draft. A retry reuses that intent
+and request identity, so an interrupted transfer cannot silently become another
+release.
 
 The client sends the signed policy acceptance and intent as bounded JSON,
 receives a signed plan, and streams only objects the plan says are missing.
