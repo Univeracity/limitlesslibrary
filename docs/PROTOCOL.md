@@ -53,7 +53,8 @@ in `limitless_library.service_contracts`:
 - current query `limitless.service-query/1.1`, with validation-only `1.0`
   compatibility;
 - current result `limitless.service-query-result/1.3`, with validation-only
-  `1.0`–`1.2` compatibility;
+  `1.0`–`1.2` compatibility; explicit experimental `1.4` construction and
+  validation is available for conformance but is not advertised by discovery;
 - current discovery `limitless.service-discovery/1.2`, with `1.0` and `1.1`
   compatibility;
 - `limitless.service-root-key-transition/1.0` and its bounded set;
@@ -80,6 +81,12 @@ at most 128 KiB of `application/octet-stream`, binds its length and digest to
 the signed selection, and stages it without overwrite. Receiver installation,
 verification, observed invocation, and outcome submission remain distinct
 events.
+
+Experimental result `1.4` additionally binds an exact positive byte length and
+the closed `limitless.exact-file-bundle/1.0` format/media-type pair inside the
+signed selection. Current discovery, ordinary queries, artifact fetching, and
+receiver installation remain on `1.3`; a client must not infer this descriptor
+for older results or mix the two generations in one query.
 
 Public contribution uses a separate query-free data plane. Signed discovery
 advertises its upload version and maximum object size. The client negotiates a

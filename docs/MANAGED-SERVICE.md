@@ -120,7 +120,7 @@ no overwrite. The generic Library does not create that local state or infer a
 receiver installation from it; custody and native handling belong to the
 explicit receiver adapter.
 
-The first open payload shape for a future native continuation is
+The first open payload shape for a native continuation is
 `limitless.exact-file-bundle/1.0`, exposed through
 `build_exact_file_bundle(...)` and `parse_exact_file_bundle(...)`. It is a
 canonical, digest-bound directory tree with no hooks or install target. Merely
@@ -129,6 +129,13 @@ receiver adapter must still match the signed result's compatibility interface
 and apply receiver-owned review, validation, and no-overwrite rules. Existing
 service result 1.3 artifacts remain format-blind and therefore stop at opaque
 staging.
+
+An explicit experimental `limitless.service-query-result/1.4` contract binds
+that format, its vendor media type, and a positive byte length into the signed
+artifact descriptor. It is available for cross-implementation conformance but
+is intentionally absent from advertised discovery and default client queries.
+It does not enter the current buffered fetch path; activation waits for bounded
+streaming delivery and a reviewed local receiver adapter.
 
 ## Explicit anonymous publication
 

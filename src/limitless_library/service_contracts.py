@@ -57,12 +57,18 @@ SERVICE_QUERY_SCHEMA_VERSIONS = (
 SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_0 = "limitless.service-query-result/1.0"
 SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_1 = "limitless.service-query-result/1.1"
 SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2 = "limitless.service-query-result/1.2"
-SERVICE_QUERY_RESULT_SCHEMA_VERSION = "limitless.service-query-result/1.3"
+SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_3 = "limitless.service-query-result/1.3"
+SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4 = "limitless.service-query-result/1.4"
+SERVICE_QUERY_RESULT_SCHEMA_VERSION = SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_3
 SERVICE_QUERY_RESULT_SCHEMA_VERSIONS = (
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_0,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_1,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION,
+)
+SERVICE_QUERY_RESULT_VALIDATION_VERSIONS = (
+    *SERVICE_QUERY_RESULT_SCHEMA_VERSIONS,
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
 )
 SERVICE_OUTCOME_ATTEMPT_SCHEMA_VERSION = "limitless.service-outcome-attempt/1.0"
 SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION_1_0 = "limitless.service-outcome-receipt/1.0"
@@ -94,6 +100,7 @@ MAX_ROOT_KEY_TRANSITION_SET_BYTES = 32 * 1024
 MAX_SERVICE_PROFILE_BYTES = 8 * 1024
 MAX_OFFICIAL_SERVICE_LOCATOR_BYTES = 4 * 1024
 MAX_CONTENT_OBJECT_BYTES = 128 * 1024 * 1024
+MAX_EXACT_ARTIFACT_BYTES = 64 * 1024 * 1024
 MAX_QUERY_TTL = timedelta(minutes=5)
 MAX_RESULT_TTL = timedelta(minutes=5)
 MAX_DISCOVERY_TTL = timedelta(days=7)
@@ -125,6 +132,18 @@ _LEGACY_RESULT_VERSIONS = (
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_1,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
 )
+_CURRENT_POLICY_RESULT_VERSIONS = frozenset(
+    {SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_3, SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4}
+)
+_HEADER_AUTHORIZATION_RESULT_VERSIONS = frozenset(
+    {
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_3,
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
+    }
+)
+_EXACT_ARTIFACT_FORMAT = "limitless.exact-file-bundle/1.0"
+_EXACT_ARTIFACT_MEDIA_TYPE = "application/vnd.limitless.exact-file-bundle+json"
 _LEGACY_TO_AUDIENCE = {
     "private": "private",
     "exchange": "circle",
@@ -734,7 +753,7 @@ def validate_service_query(value: Any, *, at: datetime | None = None) -> dict[st
                 ),
             }
         )
-        accepted_results = {SERVICE_QUERY_RESULT_SCHEMA_VERSION}
+        accepted_results = _CURRENT_POLICY_RESULT_VERSIONS
     # Preserve field order from the original input-independent contract.
     unsigned = {
         "schemaVersion": unsigned["schemaVersion"],
@@ -765,6 +784,10 @@ def validate_service_query(value: Any, *, at: datetime | None = None) -> dict[st
         raise PublicServiceContractError(
             "service query client mixed incompatible result generations"
         )
+    if version == SERVICE_QUERY_SCHEMA_VERSION and len(supported_results) != 1:
+        raise PublicServiceContractError(
+            "service query client mixed incompatible result generations"
+        )
     digest = _digest(query["queryDigest"], "service query queryDigest")
     if digest != sha256_json(unsigned):
         raise PublicServiceContractError("service query digest does not bind its exact content")
@@ -788,6 +811,7 @@ def build_service_query(
     client_version: str,
     issued_at: datetime,
     ttl_seconds: int = 60,
+    supported_result_version: str = SERVICE_QUERY_RESULT_SCHEMA_VERSION,
 ) -> dict[str, Any]:
     if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or not 1 <= ttl_seconds <= 300:
         raise PublicServiceContractError("service query ttl is invalid")
@@ -806,7 +830,7 @@ def build_service_query(
         "client": {
             "name": client_name,
             "version": client_version,
-            "supportedResults": [SERVICE_QUERY_RESULT_SCHEMA_VERSION],
+            "supportedResults": [supported_result_version],
         },
         "issuedAt": isoformat_utc(issued),
         "expiresAt": isoformat_utc(issued + timedelta(seconds=ttl_seconds)),
@@ -1000,11 +1024,10 @@ def _selection(
         raise PublicServiceContractError("selection immutable has an unsupported shape")
     kind = _text(raw_immutable.get("kind"), "selection immutable kind", maximum=24)
     immutable_fields = {"kind", "uri", "revision", "digest"}
-    if result_version in {
-        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
-        SERVICE_QUERY_RESULT_SCHEMA_VERSION,
-    } and kind == "artifact":
+    if result_version in _HEADER_AUTHORIZATION_RESULT_VERSIONS and kind == "artifact":
         immutable_fields.add("authorization")
+    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4 and kind == "artifact":
+        immutable_fields.update({"byteLength", "mediaType", "format"})
     immutable = _exact(raw_immutable, immutable_fields, "selection immutable")
     if kind not in {"artifact", "git-commit"}:
         raise PublicServiceContractError("selection immutable kind is invalid")
@@ -1012,10 +1035,7 @@ def _selection(
     if kind == "git-commit" and _COMMIT.fullmatch(revision) is None:
         raise PublicServiceContractError("selection immutable Git revision is invalid")
     uri = _https_url(immutable["uri"], "selection immutable uri")
-    if result_version in {
-        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
-        SERVICE_QUERY_RESULT_SCHEMA_VERSION,
-    } and urlsplit(uri).query:
+    if result_version in _HEADER_AUTHORIZATION_RESULT_VERSIONS and urlsplit(uri).query:
         raise PublicServiceContractError(
             "selection immutable uri cannot contain query parameters"
         )
@@ -1025,10 +1045,37 @@ def _selection(
         "revision": revision,
         "digest": _digest(immutable["digest"], "selection immutable digest"),
     }
-    if result_version in {
-        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
-        SERVICE_QUERY_RESULT_SCHEMA_VERSION,
-    } and kind == "artifact":
+    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4 and kind == "artifact":
+        byte_length = _positive_int(
+            immutable["byteLength"],
+            "selection immutable byteLength",
+            maximum=MAX_EXACT_ARTIFACT_BYTES,
+        )
+        media_type = _text(
+            immutable["mediaType"],
+            "selection immutable mediaType",
+            maximum=96,
+        )
+        artifact_format = _text(
+            immutable["format"],
+            "selection immutable format",
+            maximum=96,
+        )
+        if (
+            artifact_format != _EXACT_ARTIFACT_FORMAT
+            or media_type != _EXACT_ARTIFACT_MEDIA_TYPE
+        ):
+            raise PublicServiceContractError(
+                "selection immutable artifact format is unsupported"
+            )
+        normalized_immutable.update(
+            {
+                "byteLength": byte_length,
+                "mediaType": media_type,
+                "format": artifact_format,
+            }
+        )
+    if result_version in _HEADER_AUTHORIZATION_RESULT_VERSIONS and kind == "artifact":
         authorization = _exact(
             immutable["authorization"],
             {"header", "value"},
@@ -1066,13 +1113,13 @@ def validate_service_query_result(
     if not isinstance(value, dict):
         raise PublicServiceContractError("service query result has an unsupported shape")
     result_version = value.get("schemaVersion")
-    if result_version not in SERVICE_QUERY_RESULT_SCHEMA_VERSIONS:
+    if result_version not in SERVICE_QUERY_RESULT_VALIDATION_VERSIONS:
         raise PublicServiceContractError("service query result schemaVersion is invalid")
     common_fields = {
         "schemaVersion", "requestDigest", "decisionRef", "treatment", "selection",
         "nextAction", "indexGeneration", "issuedAt", "expiresAt", "resultDigest", "signature",
     }
-    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION:
+    if result_version in _CURRENT_POLICY_RESULT_VERSIONS:
         result = _exact(
             value,
             common_fields | {"authorizedAudiences", "policy"},
@@ -1109,7 +1156,7 @@ def validate_service_query_result(
         "issuedAt": issued_at,
         "expiresAt": expires_at,
     }
-    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION:
+    if result_version in _CURRENT_POLICY_RESULT_VERSIONS:
         policy = _exact(
             result["policy"],
             {"executionMode", "historyMode", "policyDigest"},
@@ -1180,7 +1227,7 @@ def validate_service_query_result(
                 "authorizedAudiences": normalized["authorizedAudiences"],
                 "policy": normalized["policy"],
             }
-            if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION
+            if result_version in _CURRENT_POLICY_RESULT_VERSIONS
             else {
                 "authorizedScopes": normalized["authorizedScopes"],
                 "dataUse": normalized["dataUse"],
@@ -1211,7 +1258,7 @@ def validate_service_query_result(
             raise PublicServiceContractError("service query result version was not accepted by this client")
         if normalized["requestDigest"] != query["queryDigest"]:
             raise PublicServiceContractError("service query result is not bound to this query")
-        if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION:
+        if result_version in _CURRENT_POLICY_RESULT_VERSIONS:
             if query["schemaVersion"] != SERVICE_QUERY_SCHEMA_VERSION:
                 raise PublicServiceContractError(
                     "service query result policy generation is incompatible"
@@ -1283,7 +1330,7 @@ def build_service_query_result(
     issued = issued_at.astimezone(UTC).replace(microsecond=0)
     mutually_supported = [
         version
-        for version in SERVICE_QUERY_RESULT_SCHEMA_VERSIONS
+        for version in SERVICE_QUERY_RESULT_VALIDATION_VERSIONS
         if version in checked_query["client"]["supportedResults"]
     ]
     if not mutually_supported:
@@ -1293,10 +1340,7 @@ def build_service_query_result(
     if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_0:
         versioned_selection.pop("supplyAuthorityId", None)
     if (
-        result_version not in {
-            SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
-            SERVICE_QUERY_RESULT_SCHEMA_VERSION,
-        }
+        result_version not in _HEADER_AUTHORIZATION_RESULT_VERSIONS
         and isinstance(versioned_selection.get("immutable"), dict)
         and "authorization" in versioned_selection["immutable"]
     ):
@@ -1314,7 +1358,7 @@ def build_service_query_result(
         "issuedAt": isoformat_utc(issued),
         "expiresAt": isoformat_utc(issued + timedelta(seconds=ttl_seconds)),
     }
-    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION:
+    if result_version in _CURRENT_POLICY_RESULT_VERSIONS:
         authorized_audiences = sorted(
             {
                 _LEGACY_TO_AUDIENCE.get(scope, scope)
