@@ -1,0 +1,299 @@
+{
+  "acceptedPlan": {
+    "expiresAt": "2026-08-20T23:05:00Z",
+    "intentDigest": "sha256:5a2828931ddff871a7f73e86eee8b4d83ba01652bddef5ae15d7f697a3234622",
+    "issuedAt": "2026-08-20T23:00:00Z",
+    "planDigest": "sha256:082971ea6ab75af6d961ffb460a8d431a10205b1a49b5d157cd1482d5bac84e8",
+    "reasonCodes": [],
+    "requestId": "request:release-conformance-001",
+    "requiredObjects": [],
+    "reviewStages": [
+      "compatibility",
+      "provenance",
+      "quality",
+      "rights",
+      "security"
+    ],
+    "schemaVersion": "limitless.service-submission-plan/1.0",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:public-release-conformance",
+      "value": "GRHgEvNRgJGTxTa_1zNiEzFZVfiIK--mchcMSt-TY1djrU62XMHOs7XuqWGCgHyocEBh3bWXsb1IAhiU0_-2CA"
+    },
+    "state": "accepted",
+    "submissionRef": "submission:33333333333333333333333333333333"
+  },
+  "corpusDigest": "sha256:1c1256a0a658517d02e4e51742d2b0747a756041ad43d3e754d0fb884775beb4",
+  "expected": {
+    "buildPlatform": "linux",
+    "lineageId": "lineage:clipboard-release",
+    "releaseId": "release:4d4c23ef5f2b1c382f3eda8e69b4a7a5",
+    "targetPlatform": "windows",
+    "validAt": "2026-08-20T23:04:00Z",
+    "version": "1.0.0"
+  },
+  "intent": {
+    "buildContext": {
+      "architecture": "x86_64",
+      "interfaces": [
+        "limitless.mcp/v1"
+      ],
+      "platform": "linux",
+      "runtime": "python",
+      "version": "3.13"
+    },
+    "candidate": {
+      "capabilities": [
+        "desktop.clipboard/v1"
+      ],
+      "summary": "Receiver-verified clipboard behavior.",
+      "title": "Windows clipboard component",
+      "treatment": "exact-component"
+    },
+    "compatibility": {
+      "supportedTargets": [
+        {
+          "architecture": "x86_64",
+          "interfaces": [
+            "desktop.clipboard/v1"
+          ],
+          "platform": "windows",
+          "runtime": "dotnet",
+          "versionRange": ">=10,<11"
+        }
+      ],
+      "verifiedTargets": [
+        {
+          "evidenceDigests": [
+            "sha256:b653eeebd891e707a97a0386b1c453516abb571f9a81213483fe59ecab79113c"
+          ],
+          "target": {
+            "architecture": "x86_64",
+            "interfaces": [
+              "desktop.clipboard/v1"
+            ],
+            "platform": "windows",
+            "runtime": "dotnet",
+            "versionRange": ">=10,<11"
+          }
+        }
+      ]
+    },
+    "contentObjects": [
+      {
+        "byteLength": 5000,
+        "digest": "sha256:55ec72052ec8cf440e2343652bf28e530556f9ea433745dfd5951419dd4f9961",
+        "role": "artifact"
+      },
+      {
+        "byteLength": 500,
+        "digest": "sha256:70b36e6a6f925ec492f5120f016106225a9c8424f4b7baf5b45678bf60776c4b",
+        "role": "manifest"
+      }
+    ],
+    "destination": {
+      "collectionId": "collection:public",
+      "visibility": "public"
+    },
+    "evidenceDigests": [
+      "sha256:b653eeebd891e707a97a0386b1c453516abb571f9a81213483fe59ecab79113c"
+    ],
+    "intentDigest": "sha256:5a2828931ddff871a7f73e86eee8b4d83ba01652bddef5ae15d7f697a3234622",
+    "lineage": {
+      "lineageId": "lineage:clipboard-release",
+      "parents": [],
+      "releaseClass": "initial",
+      "supersedes": null,
+      "version": "1.0.0"
+    },
+    "publisher": {
+      "authorityId": "organization:alpha",
+      "publisherId": "user:publisher"
+    },
+    "requestId": "request:release-conformance-001",
+    "rights": {
+      "allowedUses": [
+        "build-application"
+      ],
+      "grantedBy": "user:publisher",
+      "hasAuthority": true,
+      "license": "Apache-2.0"
+    },
+    "schemaVersion": "limitless.service-submission-intent/1.0",
+    "submittedAt": "2026-08-20T23:00:00Z"
+  },
+  "invalidCases": [
+    {
+      "id": "intent-target-substitution",
+      "path": "/compatibility/supportedTargets/0/platform",
+      "record": "intent",
+      "value": "linux"
+    },
+    {
+      "id": "intent-build-substitution",
+      "path": "/buildContext/platform",
+      "record": "intent",
+      "value": "windows"
+    },
+    {
+      "id": "plan-intent-substitution",
+      "path": "/intentDigest",
+      "record": "acceptedPlan",
+      "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "plan-state-substitution",
+      "path": "/state",
+      "record": "acceptedPlan",
+      "value": "needs-content"
+    },
+    {
+      "id": "plan-signature-mutation",
+      "path": "/signature/value",
+      "record": "acceptedPlan",
+      "value": "ARHgEvNRgJGTxTa_1zNiEzFZVfiIK--mchcMSt-TY1djrU62XMHOs7XuqWGCgHyocEBh3bWXsb1IAhiU0_-2CA"
+    },
+    {
+      "id": "release-intent-substitution",
+      "path": "/submissionIntentDigest",
+      "record": "release",
+      "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "release-plan-substitution",
+      "path": "/submissionPlanDigest",
+      "record": "release",
+      "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "release-publisher-substitution",
+      "path": "/publisherId",
+      "record": "release",
+      "value": "user:attacker"
+    },
+    {
+      "id": "release-reviewer-substitution",
+      "path": "/reviewerId",
+      "record": "release",
+      "value": "user:publisher"
+    },
+    {
+      "id": "release-target-substitution",
+      "path": "/compatibility/supportedTargets/0/platform",
+      "record": "release",
+      "value": "linux"
+    },
+    {
+      "id": "release-object-substitution",
+      "path": "/contentObjects/0/digest",
+      "record": "release",
+      "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "release-signature-mutation",
+      "path": "/signature/value",
+      "record": "release",
+      "value": "A-uc6bjQj5f7DkoTs5FKn5kYq8DBDm5GujVVPwS9W96w_CNJI3uLJQil7MwmLo7lcYdhppspltMhvWk0WPunBw"
+    }
+  ],
+  "publicKey": {
+    "algorithm": "ed25519",
+    "keyId": "key:public-release-conformance",
+    "publicKey": "iC0Oo7KGTnpYfz5pjOpEWZmDEuZV4F-l6LURnYuqyM0"
+  },
+  "release": {
+    "buildContext": {
+      "architecture": "x86_64",
+      "interfaces": [
+        "limitless.mcp/v1"
+      ],
+      "platform": "linux",
+      "runtime": "python",
+      "version": "3.13"
+    },
+    "candidate": {
+      "capabilities": [
+        "desktop.clipboard/v1"
+      ],
+      "summary": "Receiver-verified clipboard behavior.",
+      "title": "Windows clipboard component",
+      "treatment": "exact-component"
+    },
+    "compatibility": {
+      "supportedTargets": [
+        {
+          "architecture": "x86_64",
+          "interfaces": [
+            "desktop.clipboard/v1"
+          ],
+          "platform": "windows",
+          "runtime": "dotnet",
+          "versionRange": ">=10,<11"
+        }
+      ],
+      "verifiedTargets": [
+        {
+          "evidenceDigests": [
+            "sha256:b653eeebd891e707a97a0386b1c453516abb571f9a81213483fe59ecab79113c"
+          ],
+          "target": {
+            "architecture": "x86_64",
+            "interfaces": [
+              "desktop.clipboard/v1"
+            ],
+            "platform": "windows",
+            "runtime": "dotnet",
+            "versionRange": ">=10,<11"
+          }
+        }
+      ]
+    },
+    "contentObjects": [
+      {
+        "byteLength": 5000,
+        "digest": "sha256:55ec72052ec8cf440e2343652bf28e530556f9ea433745dfd5951419dd4f9961",
+        "role": "artifact"
+      },
+      {
+        "byteLength": 500,
+        "digest": "sha256:70b36e6a6f925ec492f5120f016106225a9c8424f4b7baf5b45678bf60776c4b",
+        "role": "manifest"
+      }
+    ],
+    "createdAt": "2026-08-20T23:00:00Z",
+    "evidenceDigests": [
+      "sha256:b653eeebd891e707a97a0386b1c453516abb571f9a81213483fe59ecab79113c"
+    ],
+    "lineage": {
+      "lineageId": "lineage:clipboard-release",
+      "parents": [],
+      "releaseClass": "initial",
+      "supersedes": null,
+      "version": "1.0.0"
+    },
+    "publisherId": "user:publisher",
+    "releaseDigest": "sha256:4d4c23ef5f2b1c382f3eda8e69b4a7a5c742a8ede41283be6c4e73b601918ac0",
+    "releaseId": "release:4d4c23ef5f2b1c382f3eda8e69b4a7a5",
+    "reviewEvidenceDigests": [
+      "sha256:a2a0463587dbff7c55c0fab8928faccd1a3cf64bee3029ce943106c439bcc2ce"
+    ],
+    "reviewerId": "service:curator",
+    "rights": {
+      "allowedUses": [
+        "build-application"
+      ],
+      "grantedBy": "user:publisher",
+      "hasAuthority": true,
+      "license": "Apache-2.0"
+    },
+    "schemaVersion": "limitless.service-release/1.0",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:public-release-conformance",
+      "value": "9-uc6bjQj5f7DkoTs5FKn5kYq8DBDm5GujVVPwS9W96w_CNJI3uLJQil7MwmLo7lcYdhppspltMhvWk0WPunBw"
+    },
+    "submissionIntentDigest": "sha256:5a2828931ddff871a7f73e86eee8b4d83ba01652bddef5ae15d7f697a3234622",
+    "submissionPlanDigest": "sha256:082971ea6ab75af6d961ffb460a8d431a10205b1a49b5d157cd1482d5bac84e8"
+  },
+  "schemaVersion": "limitless.public-submission-release-conformance/1.0"
+}

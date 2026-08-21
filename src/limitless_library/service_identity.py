@@ -101,6 +101,12 @@ class InstallationSigner:
             raise ServiceIdentityError("installation signing payload is invalid")
         return urlsafe_b64encode(self._private_key.sign(payload)).rstrip(b"=").decode("ascii")
 
+    def assert_ready(self) -> None:
+        """Satisfy signing-authority readiness without exporting key material."""
+
+        if len(self.public_bytes()) != 32:
+            raise ServiceIdentityError("installation signing authority is unavailable")
+
 
 def default_installation_state_path(
     *,
@@ -502,6 +508,39 @@ def installation_state_fingerprint(path: Path | None = None) -> str | None:
     )
 
 
+def installation_publisher_authority(
+    *,
+    service_id: str,
+    path: Path | None = None,
+) -> tuple[InstallationSigner, dict[str, Any]]:
+    """Load current anonymous publisher authority without exposing key bytes."""
+
+    selected = default_installation_state_path() if path is None else Path(path)
+    if not selected.is_absolute() or any(part == ".." for part in selected.parts):
+        raise ServiceIdentityError("installation identity state path is invalid")
+    with _state_lock(selected):
+        state = _read_state(selected)
+        if (
+            state is None
+            or state["serviceId"] != service_id
+            or state["attestation"] is None
+            or state["session"] is None
+        ):
+            raise ServiceIdentityError("installation publisher authority is unavailable")
+        response = state["session"]["response"]
+        if "submissions" not in response["capabilities"]:
+            raise ServiceIdentityError("installation session does not allow submissions")
+        signer = InstallationSigner.from_encoded(state["privateKey"])
+        return signer, {
+            "schemaVersion": "limitless.installation-publisher-authority/1.0",
+            "serviceId": state["serviceId"],
+            "publisherId": state["installationId"],
+            "authorityId": response["tenantId"],
+            "keyId": signer.key_id,
+            "generation": state["generation"],
+        }
+
+
 __all__ = [
     "INSTALLATION_STATE_SCHEMA_VERSION",
     "InstallationSigner",
@@ -509,6 +548,7 @@ __all__ = [
     "ServiceIdentityUnavailableError",
     "default_installation_state_path",
     "ensure_installation_session",
+    "installation_publisher_authority",
     "installation_state_fingerprint",
     "validate_installation_state",
 ]

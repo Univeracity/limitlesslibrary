@@ -28,3 +28,8 @@
 - Explicit exact-artifact continuation with header-only one-use authority,
   bounded digest verification, owner-only no-overwrite staging, and a
   nonsecret CLI result.
+- Public submission, policy-acceptance, admission, immutable-lineage, and
+  revocation contracts with packaged mutation corpora.
+- One-command resumable anonymous publication with draft-relative explicit
+  sources, digest-first negotiation, bounded streaming of missing bytes, and
+  publisher-visible admission status.

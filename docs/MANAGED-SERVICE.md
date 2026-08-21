@@ -110,6 +110,42 @@ signed `nextAction`, install under its own rules, verify locally, observe use,
 and decide whether to submit outcome evidence. A failed integrity check can
 consume the one-use capability but never publishes bytes to the destination.
 
+## Explicit anonymous publication
+
+The same service-specific installation key can sign a public contribution
+without account creation, pasted credentials, or a second agent reasoning
+turn. The user supplies a narrow draft and explicitly confirms the exact
+publication policy advertised by signed discovery:
+
+```bash
+limitless service-publish \
+  --draft ./examples/publication/publication.draft.json \
+  --accept-publication-policy
+```
+
+The draft names only selected objects. Relative paths resolve from the draft's
+directory, never an assumed current working directory. On the first run the
+client hashes those regular files, binds their descriptors and the current
+anonymous publisher authority into a signed intent, and creates an immutable
+mode-0600 state file beside the draft. A retry reuses that intent and request
+identity, so an interrupted transfer cannot silently become another release.
+
+The client sends the signed policy acceptance and intent as bounded JSON,
+receives a signed plan, and streams only objects the plan says are missing.
+Each upload uses a query-free path, `application/octet-stream`, exact length
+and digest headers, and the short-lived anonymous bearer. It rehashes the open
+file while sending; the service reauthorizes the current admission state,
+hashes and counts the stream into an uncommitted object, and publishes only an
+exact put-if-absent result. The client then repeats negotiation to confirm
+store presence and reports the publisher-visible admission state. Source paths,
+private keys, bearers, and workspace contents outside the draft never enter
+the submission records.
+
+The bundled example is illustrative. Publishing it requires a supported
+release with an official locator and an operating service; source builds remain
+local-only. The open client validates the public wire lifecycle but does not
+contain the private admission engine, ranking service, or managed storage.
+
 ## Advanced alternate profiles
 
 Operators building another compatible service can bypass the official
@@ -131,13 +167,16 @@ vocabulary.
 
 Python callers use `ServiceProfile`, `ServiceConnector`, and the functions in
 `limitless_library.official_service`. Packaged conformance corpora freeze the
-signed query lifecycle, installation registration/session records, and
-root-rotation behavior for other language implementations.
+signed query lifecycle, installation registration/session records, public
+submission/admission records, and root-rotation behavior for other language
+implementations.
 
 ## Deliberate exclusions
 
-Connecting does not publish work, enumerate a workspace, upload a local
-catalog, install a staged component, hand off to a native provider, or submit
-local outcome evidence. Those are separate owner-authorized continuations. The
-service-side identity authority, managed implementation, ranking, persistence,
-analytics, and deployment remain outside this repository.
+Connecting does not publish work. Only `service-publish` transfers the exact
+objects named in its reviewed draft; it does not enumerate a workspace or
+upload a local catalog. The client also does not install a staged component,
+hand off to a native provider, or submit local outcome evidence. Those remain
+separate owner-authorized continuations. The service-side identity authority,
+managed admission implementation, ranking, persistence, analytics, and
+deployment remain outside this repository.

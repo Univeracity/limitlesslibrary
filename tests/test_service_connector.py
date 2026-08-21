@@ -5,12 +5,25 @@ from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from email.message import Message
 from importlib.resources import files
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from limitless_library.contracts import canonical_json_bytes, load_json, sha256_bytes
+from limitless_library.contracts import (
+    canonical_json_bytes,
+    load_json,
+    sha256_bytes,
+    sha256_json,
+    strict_json_loads,
+)
+from limitless_library.public_admission_contracts import build_contribution_policy_acceptance
+from limitless_library.public_submission_contracts import (
+    build_content_transfer_grant,
+    build_submission_intent,
+    build_submission_plan,
+)
 from limitless_library.service_connector import (
     MAX_REMOTE_ARTIFACT_BYTES,
     ServiceConnector,
@@ -22,6 +35,7 @@ from limitless_library.service_connector import (
     VerifiedService,
 )
 from limitless_library.service_contracts import (
+    build_service_discovery,
     build_service_query_result,
     validate_service_root_key_transition_set,
 )
@@ -131,6 +145,124 @@ class ArtifactTransport:
         )
 
 
+class PublicationTransport:
+    def __init__(
+        self,
+        *,
+        plan_signer: InstallationSigner,
+        intent: dict[str, Any],
+        policy_revision: str,
+        policy_digest: str,
+    ) -> None:
+        self.plan_signer = plan_signer
+        self.intent = intent
+        self.policy_revision = policy_revision
+        self.policy_digest = policy_digest
+        self.plan: dict[str, Any] | None = None
+        self.calls: list[dict[str, Any]] = []
+
+    def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str],
+        body: bytes | None,
+        maximum_bytes: int,
+        timeout_seconds: float,
+    ) -> ServiceHttpResponse:
+        self.calls.append({"method": method, "url": url, "headers": dict(headers), "body": body})
+        if url.endswith("/v1/publication-policy/acceptances"):
+            assert body is not None
+            request = strict_json_loads(body.decode("utf-8"))
+            assert request["policyDigest"] == self.policy_digest
+            value = {
+                "schemaVersion": "limitless.public-policy-acceptance-response/1.0",
+                "acceptanceRef": "public-policy-acceptance:fixture",
+                "policyRevision": self.policy_revision,
+                "policyDigest": self.policy_digest,
+                "acceptedAt": AT.replace(second=0).isoformat().replace("+00:00", "Z"),
+            }
+        elif url.endswith("/v1/submissions"):
+            assert body == canonical_json_bytes(self.intent)
+            self.plan = build_submission_plan(
+                intent=self.intent,
+                known_object_digests=(),
+                review_stages=("compatibility", "quality", "rights", "security"),
+                issued_at=AT.replace(second=0),
+                signer=self.plan_signer,
+            )
+            value = self.plan
+        elif url.endswith("/content-authorizations"):
+            assert body is None and self.plan is not None
+            value = build_content_transfer_grant(
+                intent=self.intent,
+                plan=self.plan,
+                tenant_id=self.intent["publisher"]["authorityId"],
+                publisher_id=self.intent["publisher"]["publisherId"],
+                audience="public",
+                objects=self.plan["requiredObjects"],
+                issued_at=AT.replace(second=0),
+                signer=self.plan_signer,
+            )
+        elif url.endswith("/admission-status"):
+            assert body is None and self.plan is not None
+            value = {
+                "schemaVersion": "limitless.public-admission-status/1.0",
+                "admissionRef": "public-admission:fixture",
+                "submissionRef": self.plan["submissionRef"],
+                "state": "observed",
+                "releaseRef": None,
+                "reasonCodes": [],
+                "generation": 1,
+                "updatedAt": AT.replace(second=0).isoformat().replace("+00:00", "Z"),
+            }
+        else:
+            raise AssertionError(f"unexpected publication URL: {url}")
+        encoded = canonical_json_bytes(value)
+        assert len(encoded) <= maximum_bytes and timeout_seconds > 0
+        return ServiceHttpResponse(
+            status=200,
+            headers={"content-type": "application/json"},
+            body=encoded,
+        )
+
+    def upload_file(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        source: Any,
+        byte_length: int,
+        expected_digest: str,
+        maximum_bytes: int,
+        timeout_seconds: float,
+    ) -> ServiceHttpResponse:
+        content = source.read()
+        assert isinstance(content, bytes)
+        assert len(content) == byte_length
+        assert sha256_bytes(content) == expected_digest
+        assert self.plan is not None
+        descriptor = next(item for item in self.plan["requiredObjects"] if item["digest"] == expected_digest)
+        self.calls.append({"method": "PUT", "url": url, "headers": dict(headers), "body": None})
+        value = {
+            "schemaVersion": "limitless.service-content-transfer-result/1.0",
+            "grantId": "grant:" + "3" * 32,
+            "submissionRef": self.plan["submissionRef"],
+            "role": descriptor["role"],
+            "digest": descriptor["digest"],
+            "byteLength": descriptor["byteLength"],
+            "disposition": "created",
+        }
+        encoded = canonical_json_bytes(value)
+        assert len(encoded) <= maximum_bytes and timeout_seconds > 0
+        return ServiceHttpResponse(
+            status=201,
+            headers={"content-type": "application/json"},
+            body=encoded,
+        )
+
+
 class StaticResponse:
     def __init__(self, status: int, headers: Message, body: bytes) -> None:
         self.status = status
@@ -152,6 +284,55 @@ class StaticOpener:
     def open(self, _request: object, *, timeout: float) -> StaticResponse:
         assert timeout > 0
         return self.response
+
+
+class UploadResponse:
+    def __init__(self, body: bytes) -> None:
+        self.status = 201
+        self.body = body
+        self.closed = False
+
+    def getheaders(self) -> list[tuple[str, str]]:
+        return [
+            ("content-type", "application/json"),
+            ("content-length", str(len(self.body))),
+        ]
+
+    def read(self, maximum_bytes: int) -> bytes:
+        return self.body[:maximum_bytes]
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class UploadConnection:
+    def __init__(self, response: UploadResponse) -> None:
+        self.response = response
+        self.method = ""
+        self.path = ""
+        self.headers: dict[str, str] = {}
+        self.chunks: list[bytes] = []
+        self.closed = False
+
+    def putrequest(self, method: str, path: str, *, skip_accept_encoding: bool) -> None:
+        assert skip_accept_encoding is True
+        self.method = method
+        self.path = path
+
+    def putheader(self, name: str, value: str) -> None:
+        self.headers[name] = value
+
+    def endheaders(self) -> None:
+        return None
+
+    def send(self, value: bytes) -> None:
+        self.chunks.append(value)
+
+    def getresponse(self) -> UploadResponse:
+        return self.response
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def _profile(corpus: dict[str, Any], *, token: str | None = None) -> ServiceProfile:
@@ -495,6 +676,54 @@ def test_default_transport_preserves_a_bounded_octet_stream_for_artifact_validat
     assert response.closed is True
 
 
+def test_default_transport_streams_upload_and_rehashes_while_sending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result_body = canonical_json_bytes({"status": "created"})
+    response = UploadResponse(result_body)
+    connection = UploadConnection(response)
+    transport = UrllibServiceTransport()
+    monkeypatch.setattr(
+        "limitless_library.service_connector.http.client.HTTPSConnection",
+        lambda *_args, **_kwargs: connection,
+    )
+    content = b"x" * (300 * 1024)
+    digest = sha256_bytes(content)
+
+    result = transport.upload_file(
+        "https://api.example/v1/submissions/submission:" + "1" * 32 + "/objects/artifact/" + digest,
+        headers={
+            "content-type": "application/octet-stream",
+            "content-length": str(len(content)),
+        },
+        source=BytesIO(content),
+        byte_length=len(content),
+        expected_digest=digest,
+        maximum_bytes=1024,
+        timeout_seconds=5,
+    )
+
+    assert result.body == result_body
+    assert connection.method == "PUT"
+    assert b"".join(connection.chunks) == content
+    assert max(map(len, connection.chunks)) == 128 * 1024
+    assert connection.closed is True
+    assert response.closed is True
+
+    changed = bytearray(content)
+    changed[-1] ^= 1
+    with pytest.raises(ServiceConnectorError, match="bytes differ"):
+        transport.upload_file(
+            "https://api.example/v1/upload",
+            headers={"content-length": str(len(changed))},
+            source=BytesIO(bytes(changed)),
+            byte_length=len(changed),
+            expected_digest=digest,
+            maximum_bytes=1024,
+            timeout_seconds=5,
+        )
+
+
 def test_signed_artifact_is_fetched_with_header_authority_and_staged_without_secrets(
     tmp_path: Path,
 ) -> None:
@@ -587,3 +816,155 @@ def test_artifact_fetch_requires_an_authenticated_exact_selection(tmp_path: Path
     with pytest.raises(ServiceConnectorError, match="authority is invalid"):
         connector.fetch_selected_artifact(query=query, result=changed, destination=destination)
     assert transport.calls == []
+
+
+def test_anonymous_publisher_can_accept_policy_negotiate_and_upload_exact_content(
+    tmp_path: Path,
+) -> None:
+    publisher = InstallationSigner.generate()
+    plan_signer = InstallationSigner.generate()
+    root_signer = InstallationSigner.generate()
+    service_id = "service:publication-connector-test"
+    publisher_id = "installation:" + "1" * 32
+    authority_id = "installation-space:" + "1" * 32
+    data_policy_digest = sha256_json({"policy": "data-use"})
+    publication_policy_digest = sha256_json({"policy": "publication"})
+    discovery = build_service_discovery(
+        service_id=service_id,
+        api_base_url="https://api.limitlesslibrary.com",
+        signing_keys=[
+            (
+                plan_signer.key_id,
+                plan_signer.public_bytes(),
+                AT - timedelta(days=1),
+                AT + timedelta(days=30),
+            )
+        ],
+        data_use_policy_url="https://limitlesslibrary.com/data-use",
+        data_use_policy_digest=data_policy_digest,
+        publication_policy_revision="policy:publication-connector-test",
+        publication_policy_url="https://limitlesslibrary.com/publication-policy",
+        publication_policy_digest=publication_policy_digest,
+        rate_limit_class="public-test",
+        issued_at=AT.replace(second=0),
+        root_signer=root_signer,
+    )
+    intent = build_submission_intent(
+        signer=publisher,
+        requestId="request:publication-connector-test",
+        publisher={
+            "publisherId": publisher_id,
+            "authorityId": authority_id,
+            "keyId": publisher.key_id,
+        },
+        destination={"collectionId": "collection:public", "audience": "public"},
+        candidate={
+            "title": "Portable method",
+            "summary": "A source-free method already verified by its publisher.",
+            "treatment": "source-free-method",
+            "capabilities": ["limitless.mcp/v1"],
+        },
+        lineage={
+            "lineageId": "lineage:publication-connector-test",
+            "version": "1.0.0",
+            "releaseClass": "initial",
+            "parents": [],
+            "supersedes": None,
+        },
+        contentObjects=[
+            {
+                "role": "method",
+                "digest": sha256_bytes(b"M" * 64),
+                "byteLength": 64,
+            }
+        ],
+        compatibility={
+            "supportedTargets": [
+                {
+                    "platform": "linux",
+                    "architecture": "x86_64",
+                    "runtime": "python",
+                    "versionRange": ">=3.11,<4",
+                    "interfaces": ["limitless.mcp/v1"],
+                }
+            ],
+            "verifiedTargets": [],
+        },
+        buildContext={
+            "platform": "linux",
+            "architecture": "x86_64",
+            "runtime": "python",
+            "version": "3.12.0",
+            "interfaces": ["limitless.mcp/v1"],
+        },
+        evidenceDigests=[sha256_json({"evidence": "publisher-verification"})],
+        rights={
+            "license": "CC0-1.0",
+            "grantedBy": publisher_id,
+            "allowedUses": ["derive-method"],
+            "hasAuthority": True,
+            "policyDigest": publication_policy_digest,
+        },
+        submittedAt=AT.replace(second=0),
+    )
+    transport = PublicationTransport(
+        plan_signer=plan_signer,
+        intent=intent,
+        policy_revision=discovery["publicationPolicy"]["revision"],
+        policy_digest=publication_policy_digest,
+    )
+    profile = ServiceProfile(
+        api_base_url=discovery["apiBaseUrl"],
+        service_id=service_id,
+        root_key_id=root_signer.key_id,
+        root_public_key=root_signer.public_bytes(),
+        accepted_policy_digest=data_policy_digest,
+        requested_audiences=("public",),
+        access_token="test-publication-token",
+    )
+    connector = ServiceConnector(profile, transport=transport, clock=lambda: AT)
+    connector._cached = VerifiedService(
+        discovery=discovery,
+        root_transitions={},
+        result_keys={plan_signer.key_id: plan_signer.public_bytes()},
+    )
+    connector._cached_until = float("inf")
+    acceptance = build_contribution_policy_acceptance(
+        signer=publisher,
+        service_id=service_id,
+        publisher_id=publisher_id,
+        authority_id=authority_id,
+        policy_revision=discovery["publicationPolicy"]["revision"],
+        policy_digest=publication_policy_digest,
+        request_id="request:publication-policy-test",
+        issued_at=AT.replace(second=0),
+    )
+
+    accepted = connector.accept_publication_policy(
+        acceptance,
+        publisher_public_key=publisher.public_bytes(),
+    )
+    plan = connector.negotiate_submission(intent, publisher_public_key=publisher.public_bytes())
+    grant = connector.authorize_submission_content(intent=intent, plan=plan)
+    source = tmp_path / "method.bin"
+    source.write_bytes(b"M" * 64)
+    uploaded = connector.upload_submission_object(
+        intent=intent,
+        plan=plan,
+        role="method",
+        source=source.resolve(),
+    )
+    status = connector.submission_status(plan["submissionRef"])
+
+    assert accepted["policyDigest"] == publication_policy_digest
+    assert plan["state"] == "needs-content"
+    assert grant["objects"] == plan["requiredObjects"]
+    assert uploaded["digest"] == intent["contentObjects"][0]["digest"]
+    assert uploaded["disposition"] == "created"
+    assert status["state"] == "observed"
+    assert all(call["headers"]["authorization"] == "Bearer test-publication-token" for call in transport.calls)
+
+    changed = deepcopy(acceptance)
+    changed["policyDigest"] = data_policy_digest
+    with pytest.raises(ServiceConnectorError, match="acceptance is invalid"):
+        connector.accept_publication_policy(changed, publisher_public_key=publisher.public_bytes())

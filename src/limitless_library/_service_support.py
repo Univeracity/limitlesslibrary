@@ -36,13 +36,9 @@ IMMUTABLE_RELEASE_SCHEMA_VERSIONS = (
     IMMUTABLE_RELEASE_SCHEMA_VERSION_1_0,
     IMMUTABLE_RELEASE_SCHEMA_VERSION,
 )
-CONTRIBUTION_POLICY_ACCEPTANCE_SCHEMA_VERSION = (
-    "limitless.contribution-policy-acceptance/1.0"
-)
+CONTRIBUTION_POLICY_ACCEPTANCE_SCHEMA_VERSION = "limitless.contribution-policy-acceptance/1.0"
 PUBLIC_ADMISSION_STATUS_SCHEMA_VERSION = "limitless.public-admission-status/1.0"
-PUBLIC_RELEASE_REVOCATION_SCHEMA_VERSION = (
-    "limitless.public-release-revocation-request/1.0"
-)
+PUBLIC_RELEASE_REVOCATION_SCHEMA_VERSION = "limitless.public-release-revocation-request/1.0"
 MAX_INTENT_BYTES = 16 * 1024
 MAX_PLAN_BYTES = 16 * 1024
 MAX_CONTENT_TRANSFER_GRANT_BYTES = 16 * 1024
@@ -91,6 +87,8 @@ _CLAUSE = re.compile(r"^(?P<operator>>=|<=|>|<|==|=)?(?P<version>[0-9]+(?:\.[0-9
 
 class DecisionSigningAuthority(Protocol):
     key_id: str
+
+    def assert_ready(self) -> None: ...
 
     def sign(self, payload: bytes) -> str: ...
 

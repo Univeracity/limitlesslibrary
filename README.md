@@ -138,7 +138,8 @@ candidate exists, Limitless abstains without disclosing one.
 - Python embedding and bounded stdio MCP connector surfaces.
 - Versioned managed-service wire contracts, signed conformance corpora, and an
   explicitly activated, release-pinned HTTPS connector with anonymous
-  installation identity and short-lived sessions.
+  installation identity, short-lived sessions, exact artifact staging, and
+  resumable public contribution.
 - Authoring and sealing commands, a one-command demo, conformance fixtures,
   and tests.
 
@@ -199,6 +200,11 @@ limitless service-query --request ./service-query.json
 limitless service-query \
   --request ./service-query.json \
   --artifact-output ./selected.bin
+
+# After reviewing the advertised publication policy:
+limitless service-publish \
+  --draft ./examples/publication/publication.draft.json \
+  --accept-publication-policy
 ```
 
 Source builds without a published locator remain local-only; this repository
@@ -206,12 +212,20 @@ does not invent a live service identity. Advanced integrations may still pass
 an owner-reviewed alternate profile with `--profile`. The client validates
 root rotation, signed discovery, policy continuity, query binding,
 compatibility, and the signed result before returning it. Remote failure yields
-control back to local reuse. Connecting never publishes a local capsule or
-silently installs selected work. Exact remote artifacts move only after the
+control back to local reuse. Connecting alone never publishes a local capsule
+or silently installs selected work. Exact remote artifacts move only after the
 caller supplies `--artifact-output`: the client sends the signed one-use
 capability in a header, verifies the declared length and digest, and creates a
 new owner-only file without overwrite. Staging is not installation or proof of
-adoption. See the
+adoption.
+
+Publication is likewise explicit. `service-publish` accepts a small draft that
+names only the files the user chose, resolves their paths relative to the draft
+rather than the current directory, and prepares a signed, resumable local
+state file before network transfer. It accepts the exact advertised policy only
+with the command-line confirmation above, negotiates digests first, streams
+only missing bytes, retries the immutable submission, and returns its admission
+state. It does not scan or upload a workspace. See the
 [managed-service connector](docs/MANAGED-SERVICE.md).
 
 ## Authoring

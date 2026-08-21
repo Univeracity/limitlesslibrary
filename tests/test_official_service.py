@@ -37,7 +37,10 @@ from limitless_library.service_contracts import (
     build_service_discovery,
     build_service_profile,
 )
-from limitless_library.service_identity import InstallationSigner
+from limitless_library.service_identity import (
+    InstallationSigner,
+    installation_publisher_authority,
+)
 
 AT = datetime(2026, 8, 20, 22, 0, 30, tzinfo=UTC)
 CORPUS = Path(str(files("limitless_library.conformance").joinpath("public-service-lifecycle-1.1.json")))
@@ -68,6 +71,9 @@ def _records() -> tuple[
         ],
         data_use_policy_url="https://activation.example/data-use",
         data_use_policy_digest=policy_digest,
+        publication_policy_revision="policy:activation-publication",
+        publication_policy_url="https://activation.example/publication-policy",
+        publication_policy_digest=policy_digest,
         rate_limit_class="public-test",
         issued_at=AT - timedelta(seconds=30),
         root_signer=root_signer,
@@ -228,6 +234,19 @@ def test_one_action_verifies_authority_and_persists_credential_free_state(
     assert identity_path.exists()
     assert identity_path.stat().st_mode & 0o777 == 0o600
     assert "accessToken" in identity_path.read_text(encoding="utf-8")
+    publisher_signer, publisher = installation_publisher_authority(
+        service_id=profile["serviceId"],
+        path=identity_path,
+    )
+    publisher_id = next(iter(transport.installation_keys))
+    assert publisher == {
+        "schemaVersion": "limitless.installation-publisher-authority/1.0",
+        "serviceId": profile["serviceId"],
+        "publisherId": publisher_id,
+        "authorityId": "installation-space:" + publisher_id.removeprefix("installation:"),
+        "keyId": publisher_signer.key_id,
+        "generation": 1,
+    }
 
     previous_count = len(transport.calls)
     assert (

@@ -41,9 +41,11 @@ from .contracts import ContractError as ControlPlaneContractError
 from .contracts import canonical_json_bytes, parse_utc, sha256_json
 
 SERVICE_DISCOVERY_SCHEMA_VERSION_1_0 = "limitless.service-discovery/1.0"
-SERVICE_DISCOVERY_SCHEMA_VERSION = "limitless.service-discovery/1.1"
+SERVICE_DISCOVERY_SCHEMA_VERSION_1_1 = "limitless.service-discovery/1.1"
+SERVICE_DISCOVERY_SCHEMA_VERSION = "limitless.service-discovery/1.2"
 SERVICE_DISCOVERY_SCHEMA_VERSIONS = (
     SERVICE_DISCOVERY_SCHEMA_VERSION_1_0,
+    SERVICE_DISCOVERY_SCHEMA_VERSION_1_1,
     SERVICE_DISCOVERY_SCHEMA_VERSION,
 )
 SERVICE_QUERY_SCHEMA_VERSION_1_0 = "limitless.service-query/1.0"
@@ -69,6 +71,7 @@ SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSIONS = (
     SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION_1_0,
     SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION,
 )
+SERVICE_CONTENT_UPLOAD_SCHEMA_VERSION = "limitless.service-content-upload/1.0"
 SERVICE_ROOT_KEY_TRANSITION_SCHEMA_VERSION = "limitless.service-root-key-transition/1.0"
 SERVICE_ROOT_KEY_TRANSITION_SET_SCHEMA_VERSION = "limitless.service-root-key-transition-set/1.0"
 SERVICE_PROFILE_SCHEMA_VERSION_1_0 = "limitless.service-profile/1.0"
@@ -90,6 +93,7 @@ MAX_ROOT_KEY_TRANSITION_BYTES = 8 * 1024
 MAX_ROOT_KEY_TRANSITION_SET_BYTES = 32 * 1024
 MAX_SERVICE_PROFILE_BYTES = 8 * 1024
 MAX_OFFICIAL_SERVICE_LOCATOR_BYTES = 4 * 1024
+MAX_CONTENT_OBJECT_BYTES = 128 * 1024 * 1024
 MAX_QUERY_TTL = timedelta(minutes=5)
 MAX_RESULT_TTL = timedelta(minutes=5)
 MAX_DISCOVERY_TTL = timedelta(days=7)
@@ -2040,6 +2044,14 @@ def validate_service_discovery(
             "admissionStatusVersions",
             "releaseRevocationVersions",
         }
+        if schema_version in {
+            SERVICE_DISCOVERY_SCHEMA_VERSION_1_1,
+            SERVICE_DISCOVERY_SCHEMA_VERSION,
+        }
+        else set()
+    )
+    publication_fields = (
+        {"publicationPolicy", "contentUploadVersions"}
         if schema_version == SERVICE_DISCOVERY_SCHEMA_VERSION
         else set()
     )
@@ -2052,10 +2064,18 @@ def validate_service_discovery(
             "rootTransitionVersions", "rootTransitionState", "signingKeys", "dataUsePolicy",
             "limits", "issuedAt", "expiresAt", "documentDigest", "signature",
         }
-        | admission_fields,
+        | admission_fields
+        | publication_fields,
         "service discovery",
     )
     policy = _exact(discovery["dataUsePolicy"], {"url", "digest"}, "service discovery dataUsePolicy")
+    publication_policy = None
+    if schema_version == SERVICE_DISCOVERY_SCHEMA_VERSION:
+        publication_policy = _exact(
+            discovery["publicationPolicy"],
+            {"revision", "url", "digest"},
+            "service discovery publicationPolicy",
+        )
     transition_state = _exact(
         discovery["rootTransitionState"], {"latestSequence", "latestTransitionDigest"},
         "service discovery rootTransitionState",
@@ -2075,13 +2095,16 @@ def validate_service_discovery(
         transition_digest = _digest(
             transition_digest, "service discovery rootTransitionState latestTransitionDigest"
         )
+    limit_fields = {
+        "maxQueryBytes", "maxResultBytes", "maxOutcomeAttemptBytes", "maxOutcomeReceiptBytes",
+        "maxSubmissionIntentBytes", "maxSubmissionPlanBytes", "maxContentTransferGrantBytes",
+        "maxReleaseBytes", "rateLimitClass",
+    }
+    if schema_version == SERVICE_DISCOVERY_SCHEMA_VERSION:
+        limit_fields.add("maxContentObjectBytes")
     limits = _exact(
         discovery["limits"],
-        {
-            "maxQueryBytes", "maxResultBytes", "maxOutcomeAttemptBytes", "maxOutcomeReceiptBytes",
-            "maxSubmissionIntentBytes", "maxSubmissionPlanBytes", "maxContentTransferGrantBytes",
-            "maxReleaseBytes", "rateLimitClass",
-        },
+        limit_fields,
         "service discovery limits",
     )
     keys = discovery["signingKeys"]
@@ -2169,7 +2192,10 @@ def validate_service_discovery(
         "issuedAt": issued_at,
         "expiresAt": expires_at,
     }
-    if schema_version == SERVICE_DISCOVERY_SCHEMA_VERSION:
+    if schema_version in {
+        SERVICE_DISCOVERY_SCHEMA_VERSION_1_1,
+        SERVICE_DISCOVERY_SCHEMA_VERSION,
+    }:
         unsigned.update(
             {
                 "contributionPolicyAcceptanceVersions": _sorted_texts(
@@ -2192,6 +2218,38 @@ def validate_service_discovery(
                 ),
             }
         )
+    if schema_version == SERVICE_DISCOVERY_SCHEMA_VERSION:
+        if publication_policy is None:
+            raise PublicServiceContractError(
+                "service discovery publicationPolicy is required"
+            )
+        unsigned["contentUploadVersions"] = _sorted_texts(
+            discovery["contentUploadVersions"],
+            "service discovery contentUploadVersions",
+            maximum_items=4,
+            maximum_length=80,
+        )
+        unsigned["publicationPolicy"] = {
+            "revision": _text(
+                publication_policy["revision"],
+                "service discovery publicationPolicy revision",
+                maximum=120,
+                pattern=_IDENTIFIER,
+            ),
+            "url": _https_url(
+                publication_policy["url"],
+                "service discovery publicationPolicy url",
+            ),
+            "digest": _digest(
+                publication_policy["digest"],
+                "service discovery publicationPolicy digest",
+            ),
+        }
+        unsigned["limits"]["maxContentObjectBytes"] = _positive_int(
+            limits["maxContentObjectBytes"],
+            "service discovery maxContentObjectBytes",
+            maximum=MAX_CONTENT_OBJECT_BYTES,
+        )
     if unsigned["protocolVersion"] != SERVICE_PROTOCOL_VERSION:
         raise PublicServiceContractError("service discovery protocolVersion is invalid")
     if (
@@ -2210,7 +2268,8 @@ def validate_service_discovery(
             IMMUTABLE_RELEASE_SCHEMA_VERSIONS
         )
         or SERVICE_ROOT_KEY_TRANSITION_SCHEMA_VERSION not in unsigned["rootTransitionVersions"]
-        or schema_version == SERVICE_DISCOVERY_SCHEMA_VERSION
+        or schema_version
+        in {SERVICE_DISCOVERY_SCHEMA_VERSION_1_1, SERVICE_DISCOVERY_SCHEMA_VERSION}
         and (
             CONTRIBUTION_POLICY_ACCEPTANCE_SCHEMA_VERSION
             not in unsigned["contributionPolicyAcceptanceVersions"]
@@ -2218,6 +2277,9 @@ def validate_service_discovery(
             not in unsigned["admissionStatusVersions"]
             or PUBLIC_RELEASE_REVOCATION_SCHEMA_VERSION
             not in unsigned["releaseRevocationVersions"]
+            or schema_version == SERVICE_DISCOVERY_SCHEMA_VERSION
+            and SERVICE_CONTENT_UPLOAD_SCHEMA_VERSION
+            not in unsigned["contentUploadVersions"]
         )
     ):
         raise PublicServiceContractError("service discovery omits the required protocol versions")
@@ -2244,6 +2306,9 @@ def build_service_discovery(
     signing_keys: Iterable[tuple[str, bytes, datetime, datetime]],
     data_use_policy_url: str,
     data_use_policy_digest: str,
+    publication_policy_revision: str,
+    publication_policy_url: str,
+    publication_policy_digest: str,
     rate_limit_class: str,
     issued_at: datetime,
     root_signer: DecisionSigningAuthority,
@@ -2279,6 +2344,7 @@ def build_service_discovery(
         "submissionIntentVersions": list(SUBMISSION_INTENT_SCHEMA_VERSIONS),
         "submissionPlanVersions": [SUBMISSION_PLAN_SCHEMA_VERSION],
         "contentTransferGrantVersions": [CONTENT_TRANSFER_GRANT_SCHEMA_VERSION],
+        "contentUploadVersions": [SERVICE_CONTENT_UPLOAD_SCHEMA_VERSION],
         "releaseVersions": list(IMMUTABLE_RELEASE_SCHEMA_VERSIONS),
         "contributionPolicyAcceptanceVersions": [
             CONTRIBUTION_POLICY_ACCEPTANCE_SCHEMA_VERSION
@@ -2292,6 +2358,11 @@ def build_service_discovery(
         },
         "signingKeys": sorted(keys, key=lambda item: item["keyId"]),
         "dataUsePolicy": {"url": data_use_policy_url, "digest": data_use_policy_digest},
+        "publicationPolicy": {
+            "revision": publication_policy_revision,
+            "url": publication_policy_url,
+            "digest": publication_policy_digest,
+        },
         "limits": {
             "maxQueryBytes": MAX_QUERY_BYTES,
             "maxResultBytes": MAX_RESULT_BYTES,
@@ -2300,6 +2371,7 @@ def build_service_discovery(
             "maxSubmissionIntentBytes": MAX_INTENT_BYTES,
             "maxSubmissionPlanBytes": MAX_PLAN_BYTES,
             "maxContentTransferGrantBytes": MAX_CONTENT_TRANSFER_GRANT_BYTES,
+            "maxContentObjectBytes": MAX_CONTENT_OBJECT_BYTES,
             "maxReleaseBytes": MAX_RELEASE_BYTES,
             "rateLimitClass": rate_limit_class,
         },

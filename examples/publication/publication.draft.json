@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "limitless.publication-draft/1.0",
+  "candidate": {
+    "title": "Receiver-owned adoption verification",
+    "summary": "A source-free method for distinguishing delivery from verified use.",
+    "treatment": "source-free-method",
+    "capabilities": [
+      "limitless.mcp/v1"
+    ]
+  },
+  "lineage": {
+    "lineageId": "lineage:receiver-owned-adoption-verification",
+    "version": "1.0.0",
+    "releaseClass": "initial",
+    "parents": [],
+    "supersedes": null
+  },
+  "objects": [
+    {
+      "role": "method",
+      "path": "method.md"
+    }
+  ],
+  "compatibility": {
+    "supportedTargets": [
+      {
+        "platform": "linux",
+        "architecture": "x86_64",
+        "runtime": "python",
+        "versionRange": ">=3.11,<4",
+        "interfaces": [
+          "limitless.mcp/v1"
+        ]
+      }
+    ],
+    "verifiedTargets": []
+  },
+  "buildContext": {
+    "platform": "linux",
+    "architecture": "x86_64",
+    "runtime": "python",
+    "version": "3.11.0",
+    "interfaces": [
+      "limitless.mcp/v1"
+    ]
+  },
+  "evidenceDigests": [
+    "sha256:c64793f7ff387dc8817c4077ed2e0c14ca711129f316e99210ab698816274b30"
+  ],
+  "rights": {
+    "license": "CC0-1.0",
+    "allowedUses": [
+      "derive-method"
+    ],
+    "hasAuthority": true
+  }
+}

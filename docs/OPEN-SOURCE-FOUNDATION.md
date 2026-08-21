@@ -25,7 +25,8 @@ trust an undocumented implementation of the core reuse decision.
 - Local catalog, CLI, Python connector, and stdio MCP adapter.
 - The managed-service request/result, discovery, root-rotation, outcome, and
   submission contracts; signed conformance corpora; and a bounded, one-action
-  official-service client with advanced alternate-profile control.
+  official-service client with anonymous query, exact artifact staging,
+  resumable public contribution, and advanced alternate-profile control.
 - A meaningful bundled lifecycle demo, conformance fixtures, and tests.
 
 ## Inspectability
@@ -44,11 +45,13 @@ policy, and protocol boundaries.
 ## Alpha scope
 
 This release supports a single operator and a local catalog, plus an optional
-client that verifies a release-pinned or explicitly configured service's public authority. It
-does not implement remote publisher identity, multi-party policy, managed
-execution, production key custody, or verifier completeness. Internal
-experiments, private receiver data, and unreleased product research are not
-part of the public distribution.
+client that verifies a release-pinned or explicitly configured service's
+public authority. The client holds a pseudonymous publisher key locally and
+can explicitly contribute selected public objects through signed, inspectable
+contracts. It does not implement the managed identity authority, multi-party
+policy engine, managed execution, production service key custody, ranking, or
+verifier completeness. Internal experiments, private receiver data, and
+unreleased product research are not part of the public distribution.
 
 These limits are explicit so users can evaluate the software on what it
 actually enforces. They are not hidden prerequisites: local selection,

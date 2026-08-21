@@ -18,12 +18,14 @@ from .official_service import (
     activated_service_profile,
     activation_details,
 )
+from .publication import PublicationError, publish_draft
 from .sandbox import containment_readiness
 from .service_connector import (
     ServiceConnector,
     ServiceConnectorError,
     ServiceProfile,
 )
+from .service_identity import installation_publisher_authority
 
 
 def _print(value: dict[str, object]) -> None:
@@ -120,6 +122,22 @@ def _parser() -> argparse.ArgumentParser:
         "--profile",
         type=Path,
         help="advanced: query through an explicit alternate service profile",
+    )
+
+    service_publish = subparsers.add_parser(
+        "service-publish",
+        help="prepare, resume, and publish one draft through anonymous authority",
+    )
+    service_publish.add_argument("--draft", type=Path, required=True)
+    service_publish.add_argument(
+        "--state",
+        type=Path,
+        help="local resumable state (defaults beside the draft)",
+    )
+    service_publish.add_argument(
+        "--accept-publication-policy",
+        action="store_true",
+        help="confirm review and acceptance of the service-advertised policy",
     )
     service_query.add_argument("--request", type=Path)
     service_query.add_argument("--objective")
@@ -227,6 +245,19 @@ def main() -> None:
                 _print(staged)
             elif not args.output:
                 _print(result)
+        elif args.command == "service-publish":
+            connector = activated_service_connector()
+            signer, publisher = installation_publisher_authority(service_id=connector.profile.service_id)
+            _print(
+                publish_draft(
+                    connector,
+                    draft_path=args.draft,
+                    state_path=args.state,
+                    signer=signer,
+                    publisher=publisher,
+                    accept_publication_policy=args.accept_publication_policy,
+                )
+            )
         elif args.command == "seal-capsule":
             write_new_json(args.output, seal_capsule(load_json(args.draft), args.root))
         elif args.command == "seal-recipe":
@@ -249,6 +280,7 @@ def main() -> None:
         CatalogError,
         ContractError,
         DemoError,
+        PublicationError,
         ServiceConnectorError,
     ) as error:
         print(f"limitless: {error}", file=sys.stderr)

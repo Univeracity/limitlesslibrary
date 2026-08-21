@@ -1,0 +1,216 @@
+{
+  "corpusDigest": "sha256:69ed2a590f7427c68cb77d7263313f86b8648e7c32f8d32e521a7872cc79bb9e",
+  "expected": {
+    "grantId": "grant:833090e345644219fb94bbc5a2a67659",
+    "objectDigests": [
+      "sha256:0b9f72605c29726dbdca85ec44497ea3d3a89dcdd8a9cd9c2b8fa497b266f1d3"
+    ],
+    "operation": "put-if-absent",
+    "validAt": "2026-08-20T21:04:00Z"
+  },
+  "grant": {
+    "audience": "service:limitless-content-ingest",
+    "expiresAt": "2026-08-20T21:05:00Z",
+    "grantDigest": "sha256:833090e345644219fb94bbc5a2a67659860de8b24e16e02b5c51ae3d7cd09e84",
+    "grantId": "grant:833090e345644219fb94bbc5a2a67659",
+    "intentDigest": "sha256:e0eea5037f40c2a3e5cae8bb236a2dabd5ed9feb16d261a41def3c5048378a00",
+    "issuedAt": "2026-08-20T21:00:00Z",
+    "objects": [
+      {
+        "byteLength": 5000,
+        "digest": "sha256:0b9f72605c29726dbdca85ec44497ea3d3a89dcdd8a9cd9c2b8fa497b266f1d3",
+        "role": "artifact"
+      }
+    ],
+    "operation": "put-if-absent",
+    "planDigest": "sha256:8b961b70f5f44c6eafc0d28080ef8fd37b04b647b854be0b429b99c9c17dd738",
+    "publisherId": "user:publisher",
+    "requestId": "request:transfer-conformance-001",
+    "schemaVersion": "limitless.service-content-transfer-grant/1.0",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:public-submission-conformance",
+      "value": "bqOCuFJv-paNNhUQJnEEja_OwZCWw6UzI5sA2iG_Q9sP_DAq7R4kUMVAi661n-TUmcr_uUmoBDy1_AqFvvWRCw"
+    },
+    "submissionRef": "submission:11111111111111111111111111111111",
+    "tenantId": "organization:alpha"
+  },
+  "intent": {
+    "buildContext": {
+      "architecture": "x86_64",
+      "interfaces": [
+        "limitless.mcp/v1"
+      ],
+      "platform": "linux",
+      "runtime": "python",
+      "version": "3.13"
+    },
+    "candidate": {
+      "capabilities": [
+        "desktop.clipboard/v1"
+      ],
+      "summary": "Receiver-verified clipboard behavior.",
+      "title": "Windows clipboard component",
+      "treatment": "exact-component"
+    },
+    "compatibility": {
+      "supportedTargets": [
+        {
+          "architecture": "x86_64",
+          "interfaces": [
+            "desktop.clipboard/v1"
+          ],
+          "platform": "windows",
+          "runtime": "dotnet",
+          "versionRange": ">=10,<11"
+        }
+      ],
+      "verifiedTargets": [
+        {
+          "evidenceDigests": [
+            "sha256:4d727dd28170b88d8204366c17bd93d62ff4d6dfad17045068304572c61dd472"
+          ],
+          "target": {
+            "architecture": "x86_64",
+            "interfaces": [
+              "desktop.clipboard/v1"
+            ],
+            "platform": "windows",
+            "runtime": "dotnet",
+            "versionRange": ">=10,<11"
+          }
+        }
+      ]
+    },
+    "contentObjects": [
+      {
+        "byteLength": 5000,
+        "digest": "sha256:0b9f72605c29726dbdca85ec44497ea3d3a89dcdd8a9cd9c2b8fa497b266f1d3",
+        "role": "artifact"
+      },
+      {
+        "byteLength": 500,
+        "digest": "sha256:f1cc6bea0d582abc2103f3a521415618517a77f693a5be8966f4165027d05e18",
+        "role": "manifest"
+      }
+    ],
+    "destination": {
+      "collectionId": "collection:public",
+      "visibility": "public"
+    },
+    "evidenceDigests": [
+      "sha256:4d727dd28170b88d8204366c17bd93d62ff4d6dfad17045068304572c61dd472"
+    ],
+    "intentDigest": "sha256:e0eea5037f40c2a3e5cae8bb236a2dabd5ed9feb16d261a41def3c5048378a00",
+    "lineage": {
+      "lineageId": "lineage:clipboard-component",
+      "parents": [],
+      "releaseClass": "initial",
+      "supersedes": null,
+      "version": "1.0.0"
+    },
+    "publisher": {
+      "authorityId": "organization:alpha",
+      "publisherId": "user:publisher"
+    },
+    "requestId": "request:transfer-conformance-001",
+    "rights": {
+      "allowedUses": [
+        "build-application"
+      ],
+      "grantedBy": "user:publisher",
+      "hasAuthority": true,
+      "license": "Apache-2.0"
+    },
+    "schemaVersion": "limitless.service-submission-intent/1.0",
+    "submittedAt": "2026-08-20T21:00:00Z"
+  },
+  "invalidCases": [
+    {
+      "id": "intent-digest-substitution",
+      "path": "/intentDigest",
+      "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "plan-digest-substitution",
+      "path": "/planDigest",
+      "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "tenant-substitution",
+      "path": "/tenantId",
+      "value": "organization:attacker"
+    },
+    {
+      "id": "publisher-substitution",
+      "path": "/publisherId",
+      "value": "user:attacker"
+    },
+    {
+      "id": "audience-substitution",
+      "path": "/audience",
+      "value": "service:attacker-ingest"
+    },
+    {
+      "id": "overwrite-operation",
+      "path": "/operation",
+      "value": "overwrite"
+    },
+    {
+      "id": "object-digest-substitution",
+      "path": "/objects/0/digest",
+      "value": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "object-length-substitution",
+      "path": "/objects/0/byteLength",
+      "value": 4999
+    },
+    {
+      "id": "grant-id-substitution",
+      "path": "/grantId",
+      "value": "grant:00000000000000000000000000000000"
+    },
+    {
+      "id": "signature-mutation",
+      "path": "/signature/value",
+      "value": "AqOCuFJv-paNNhUQJnEEja_OwZCWw6UzI5sA2iG_Q9sP_DAq7R4kUMVAi661n-TUmcr_uUmoBDy1_AqFvvWRCw"
+    }
+  ],
+  "plan": {
+    "expiresAt": "2026-08-20T21:05:00Z",
+    "intentDigest": "sha256:e0eea5037f40c2a3e5cae8bb236a2dabd5ed9feb16d261a41def3c5048378a00",
+    "issuedAt": "2026-08-20T21:00:00Z",
+    "planDigest": "sha256:8b961b70f5f44c6eafc0d28080ef8fd37b04b647b854be0b429b99c9c17dd738",
+    "reasonCodes": [],
+    "requestId": "request:transfer-conformance-001",
+    "requiredObjects": [
+      {
+        "byteLength": 5000,
+        "digest": "sha256:0b9f72605c29726dbdca85ec44497ea3d3a89dcdd8a9cd9c2b8fa497b266f1d3",
+        "role": "artifact"
+      }
+    ],
+    "reviewStages": [
+      "compatibility",
+      "provenance",
+      "quality",
+      "rights",
+      "security"
+    ],
+    "schemaVersion": "limitless.service-submission-plan/1.0",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:public-submission-conformance",
+      "value": "7xNkan2m8LVTVyBXZ2SnV__wl6M1eqx7voWCXcb6zTuZfnED-qMH7kv4zcjgWfZ6tOQp5YO1hURxEUq6DKYqAA"
+    },
+    "state": "needs-content",
+    "submissionRef": "submission:11111111111111111111111111111111"
+  },
+  "publicKey": {
+    "algorithm": "ed25519",
+    "keyId": "key:public-submission-conformance",
+    "publicKey": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"
+  },
+  "schemaVersion": "limitless.public-content-transfer-grant-conformance/1.0"
+}

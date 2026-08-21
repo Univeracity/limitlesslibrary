@@ -9,17 +9,21 @@ bearer token.
 
 from __future__ import annotations
 
+import http.client
 import json
+import os
 import re
 import ssl
+import stat
 import threading
 import time
 from base64 import urlsafe_b64decode
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, BinaryIO, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import (
@@ -45,11 +49,31 @@ from .installation_identity_contracts import (
 from .installation_identity_contracts import (
     MAX_REQUEST_BYTES as MAX_INSTALLATION_REQUEST_BYTES,
 )
+from .public_admission_contracts import (
+    MAX_SIGNED_REQUEST_BYTES,
+    PublicAdmissionContractError,
+    validate_contribution_policy_acceptance,
+    validate_public_admission_status,
+    validate_public_policy_acceptance_response,
+    validate_public_release_revocation_request,
+)
+from .public_submission_contracts import (
+    MAX_CONTENT_TRANSFER_GRANT_BYTES,
+    MAX_CONTENT_TRANSFER_RESULT_BYTES,
+    MAX_INTENT_BYTES,
+    MAX_PLAN_BYTES,
+    PublicSubmissionContractError,
+    validate_content_transfer_grant,
+    validate_content_transfer_result,
+    validate_submission_intent,
+    validate_submission_plan,
+)
 from .service_contracts import (
     MAX_DISCOVERY_BYTES,
     MAX_QUERY_BYTES,
     MAX_RESULT_BYTES,
     MAX_ROOT_KEY_TRANSITION_SET_BYTES,
+    SERVICE_CONTENT_UPLOAD_SCHEMA_VERSION,
     SERVICE_PROTOCOL_VERSION,
     SERVICE_QUERY_RESULT_SCHEMA_VERSIONS,
     SERVICE_QUERY_SCHEMA_VERSION,
@@ -72,6 +96,7 @@ _JSON_CONTENT_TYPE = re.compile(r"^application/json(?:\s*;\s*charset=(?:utf-8|UT
 _CONTENT_LENGTH = re.compile(r"^(?:0|[1-9][0-9]{0,6})$")
 _ARTIFACT_CONTENT_TYPE = "application/octet-stream"
 MAX_REMOTE_ARTIFACT_BYTES = 128 * 1024
+MAX_PUBLICATION_STATUS_BYTES = 4 * 1024
 
 
 class ServiceConnectorError(RuntimeError):
@@ -97,6 +122,18 @@ class ServiceTransport(Protocol):
         *,
         headers: Mapping[str, str],
         body: bytes | None,
+        maximum_bytes: int,
+        timeout_seconds: float,
+    ) -> ServiceHttpResponse: ...
+
+    def upload_file(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        source: BinaryIO,
+        byte_length: int,
+        expected_digest: str,
         maximum_bytes: int,
         timeout_seconds: float,
     ) -> ServiceHttpResponse: ...
@@ -301,6 +338,7 @@ class UrllibServiceTransport:
             _NoRedirect(),
             HTTPSHandler(context=context),
         )
+        self._ssl_context = context
 
     def request(
         self,
@@ -357,6 +395,97 @@ class UrllibServiceTransport:
             raise ServiceConnectorError("service response exceeds its byte limit")
         return ServiceHttpResponse(status=status, headers=response_headers, body=content)
 
+    def upload_file(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        source: BinaryIO,
+        byte_length: int,
+        expected_digest: str,
+        maximum_bytes: int,
+        timeout_seconds: float,
+    ) -> ServiceHttpResponse:
+        """Stream one exact file over HTTPS without redirects or proxy state."""
+
+        checked_url = _request_url(url)
+        parsed = urlsplit(checked_url)
+        if (
+            not callable(getattr(source, "read", None))
+            or isinstance(byte_length, bool)
+            or not isinstance(byte_length, int)
+            or not 1 <= byte_length <= 1024 * 1024 * 1024
+            or not isinstance(expected_digest, str)
+            or _DIGEST.fullmatch(expected_digest) is None
+            or isinstance(maximum_bytes, bool)
+            or not isinstance(maximum_bytes, int)
+            or not 1 <= maximum_bytes <= 1024 * 1024
+            or timeout_seconds <= 0
+            or timeout_seconds > 300
+        ):
+            raise ServiceConnectorError("service upload limits are invalid")
+        connection = http.client.HTTPSConnection(
+            parsed.hostname,
+            port=parsed.port,
+            timeout=timeout_seconds,
+            context=self._ssl_context,
+        )
+        response: http.client.HTTPResponse | None = None
+        try:
+            connection.putrequest("PUT", parsed.path, skip_accept_encoding=True)
+            for name, value in headers.items():
+                if not isinstance(name, str) or not isinstance(value, str):
+                    raise ServiceConnectorError("service upload header is invalid")
+                connection.putheader(name, value)
+            connection.endheaders()
+            hasher = sha256()
+            total = 0
+            while True:
+                chunk = source.read(128 * 1024)
+                if not isinstance(chunk, bytes) or len(chunk) > 128 * 1024:
+                    raise ServiceConnectorError("service upload source is invalid")
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > byte_length:
+                    raise ServiceConnectorError("service upload source length differs")
+                hasher.update(chunk)
+                connection.send(chunk)
+            if total != byte_length or "sha256:" + hasher.hexdigest() != expected_digest:
+                raise ServiceConnectorError("service upload source bytes differ")
+            response = connection.getresponse()
+            response_headers: dict[str, str] = {}
+            for key, value in response.getheaders():
+                normalized_key = key.lower()
+                if normalized_key in response_headers:
+                    raise ServiceConnectorError("duplicate service response header is invalid")
+                response_headers[normalized_key] = value
+            encoding = response_headers.get("content-encoding")
+            if encoding not in {None, "identity"}:
+                raise ServiceConnectorError("compressed service responses are refused")
+            declared = response_headers.get("content-length")
+            if declared is not None:
+                try:
+                    length = int(declared)
+                except ValueError as error:
+                    raise ServiceConnectorError("service content length is invalid") from error
+                if length < 0 or length > maximum_bytes:
+                    raise ServiceConnectorError("service response exceeds its byte limit")
+            content = response.read(maximum_bytes + 1)
+            if len(content) > maximum_bytes:
+                raise ServiceConnectorError("service response exceeds its byte limit")
+            return ServiceHttpResponse(
+                status=int(response.status),
+                headers=response_headers,
+                body=content,
+            )
+        except (OSError, TimeoutError, http.client.HTTPException) as error:
+            raise ServiceUnavailableError("managed service is unavailable; continue locally") from error
+        finally:
+            if response is not None:
+                response.close()
+            connection.close()
+
 
 @dataclass(frozen=True)
 class VerifiedService:
@@ -375,18 +504,22 @@ class ServiceConnector:
         transport: ServiceTransport | None = None,
         clock: Callable[[], datetime] | None = None,
         timeout_seconds: float = 5.0,
+        upload_timeout_seconds: float = 120.0,
         cache_seconds: float = 60.0,
     ) -> None:
         if not isinstance(profile, ServiceProfile):
             raise TypeError("service profile is invalid")
         if timeout_seconds <= 0 or timeout_seconds > 30:
             raise ValueError("service timeout is invalid")
+        if upload_timeout_seconds <= 0 or upload_timeout_seconds > 300:
+            raise ValueError("service upload timeout is invalid")
         if cache_seconds < 0 or cache_seconds > 300:
             raise ValueError("service discovery cache duration is invalid")
         self.profile = profile
         self._transport = transport or UrllibServiceTransport()
         self._clock = clock or (lambda: datetime.now(tz=UTC))
         self._timeout_seconds = timeout_seconds
+        self._upload_timeout_seconds = upload_timeout_seconds
         self._cache_seconds = cache_seconds
         self._lock = threading.Lock()
         self._cached: VerifiedService | None = None
@@ -481,6 +614,7 @@ class ServiceConnector:
             transport=self._transport,
             clock=self._clock,
             timeout_seconds=self._timeout_seconds,
+            upload_timeout_seconds=self._upload_timeout_seconds,
             cache_seconds=self._cache_seconds,
         )
         with self._lock:
@@ -729,6 +863,353 @@ class ServiceConnector:
             "path": str(path),
             "nextAction": checked_result["nextAction"],
         }
+
+    def accept_publication_policy(
+        self,
+        acceptance: dict[str, Any],
+        *,
+        publisher_public_key: bytes,
+    ) -> dict[str, Any]:
+        """Accept the exact publication policy advertised by discovery."""
+
+        if self.profile.access_token is None:
+            raise ServiceConnectorError("managed service authorization is required")
+        verified = self.inspect()
+        now = self._now()
+        policy = verified.discovery.get("publicationPolicy")
+        if not isinstance(policy, dict):
+            raise ServiceConnectorError("service does not advertise a publication policy")
+        try:
+            key_id = acceptance["publisher"]["keyId"]
+            checked = validate_contribution_policy_acceptance(
+                acceptance,
+                public_keys={key_id: publisher_public_key},
+                at=now,
+            )
+        except (KeyError, PublicAdmissionContractError, TypeError, ValueError) as error:
+            raise ServiceConnectorError("publication policy acceptance is invalid") from error
+        if (
+            checked["serviceId"] != self.profile.service_id
+            or checked["policyRevision"] != policy["revision"]
+            or checked["policyDigest"] != policy["digest"]
+        ):
+            raise ServiceConnectorError("publication policy acceptance differs from discovery")
+        response = self._request_json(
+            "POST",
+            "/v1/publication-policy/acceptances",
+            body=checked,
+            maximum_bytes=MAX_PUBLICATION_STATUS_BYTES,
+            maximum_request_bytes=MAX_SIGNED_REQUEST_BYTES,
+            authenticated=True,
+        )
+        try:
+            return validate_public_policy_acceptance_response(
+                response,
+                expected_policy_revision=policy["revision"],
+                expected_policy_digest=policy["digest"],
+            )
+        except PublicAdmissionContractError as error:
+            raise ServiceConnectorError("publication policy response is invalid") from error
+
+    def negotiate_submission(
+        self,
+        intent: dict[str, Any],
+        *,
+        publisher_public_key: bytes,
+    ) -> dict[str, Any]:
+        """Submit one signed public intent and verify the service plan."""
+
+        if self.profile.access_token is None:
+            raise ServiceConnectorError("managed service authorization is required")
+        verified = self.inspect()
+        now = self._now()
+        policy = verified.discovery.get("publicationPolicy")
+        if not isinstance(policy, dict):
+            raise ServiceConnectorError("service does not advertise public submission")
+        try:
+            key_id = intent["publisher"]["keyId"]
+            checked_intent = validate_submission_intent(
+                intent,
+                public_keys={key_id: publisher_public_key},
+            )
+        except (KeyError, PublicSubmissionContractError, TypeError, ValueError) as error:
+            raise ServiceConnectorError("public submission intent is invalid") from error
+        if (
+            checked_intent["schemaVersion"] not in verified.discovery["submissionIntentVersions"]
+            or checked_intent["destination"] != {"collectionId": "collection:public", "audience": "public"}
+            or checked_intent["rights"].get("policyDigest") != policy["digest"]
+            or "public" not in self.profile.requested_audiences
+        ):
+            raise ServiceConnectorError("public submission intent exceeds the opted-in profile")
+        maximum = min(MAX_PLAN_BYTES, verified.discovery["limits"]["maxSubmissionPlanBytes"])
+        request_maximum = min(MAX_INTENT_BYTES, verified.discovery["limits"]["maxSubmissionIntentBytes"])
+        plan_value = self._request_json(
+            "POST",
+            "/v1/submissions",
+            body=checked_intent,
+            maximum_bytes=maximum,
+            maximum_request_bytes=request_maximum,
+            authenticated=True,
+        )
+        try:
+            return validate_submission_plan(
+                plan_value,
+                public_keys=verified.result_keys,
+                expected_intent=checked_intent,
+                at=now,
+            )
+        except PublicSubmissionContractError as error:
+            raise ServiceConnectorError("public submission plan is invalid") from error
+
+    def authorize_submission_content(
+        self,
+        *,
+        intent: dict[str, Any],
+        plan: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Obtain signed authority for exactly the plan's missing objects."""
+
+        if self.profile.access_token is None:
+            raise ServiceConnectorError("managed service authorization is required")
+        verified = self.inspect()
+        now = self._now()
+        try:
+            checked_intent = validate_submission_intent(intent)
+            checked_plan = validate_submission_plan(
+                plan,
+                public_keys=verified.result_keys,
+                expected_intent=checked_intent,
+                at=now,
+            )
+        except PublicSubmissionContractError as error:
+            raise ServiceConnectorError("public content authorization input is invalid") from error
+        if checked_plan["state"] != "needs-content":
+            raise ServiceConnectorError("public submission does not require content")
+        grant_value = self._request_json(
+            "POST",
+            f"/v1/submissions/{checked_plan['submissionRef']}/content-authorizations",
+            body=None,
+            maximum_bytes=MAX_CONTENT_TRANSFER_GRANT_BYTES,
+            authenticated=True,
+        )
+        try:
+            return validate_content_transfer_grant(
+                grant_value,
+                public_keys=verified.result_keys,
+                expected_intent=checked_intent,
+                expected_plan=checked_plan,
+                at=now,
+            )
+        except PublicSubmissionContractError as error:
+            raise ServiceConnectorError("public content transfer grant is invalid") from error
+
+    def upload_submission_object(
+        self,
+        *,
+        intent: dict[str, Any],
+        plan: dict[str, Any],
+        role: str,
+        source: str | Path,
+    ) -> dict[str, Any]:
+        """Stream one plan-required object from an explicit absolute path."""
+
+        if self.profile.access_token is None:
+            raise ServiceConnectorError("managed service authorization is required")
+        verified = self.inspect()
+        now = self._now()
+        try:
+            checked_intent = validate_submission_intent(intent)
+            checked_plan = validate_submission_plan(
+                plan,
+                public_keys=verified.result_keys,
+                expected_intent=checked_intent,
+                at=now,
+            )
+        except PublicSubmissionContractError as error:
+            raise ServiceConnectorError("public content upload input is invalid") from error
+        discovery = verified.discovery
+        if (
+            checked_plan["state"] != "needs-content"
+            or SERVICE_CONTENT_UPLOAD_SCHEMA_VERSION not in discovery.get("contentUploadVersions", [])
+            or not isinstance(role, str)
+            or role not in {"artifact", "manifest", "method", "verification"}
+        ):
+            raise ServiceConnectorError("public content upload is unsupported")
+        if not isinstance(source, (str, Path)):
+            raise ServiceConnectorError("public content upload source is invalid")
+        path = Path(source)
+        if not path.is_absolute():
+            raise ServiceConnectorError("public content upload source must be absolute")
+
+        descriptor: dict[str, Any] | None = None
+        opened: BinaryIO | None = None
+        try:
+            before = path.lstat()
+            if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+                raise ServiceConnectorError("public content upload source must be a regular file")
+            flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+            descriptor_fd = os.open(path, flags)
+            opened = os.fdopen(descriptor_fd, "rb", buffering=0)
+            current = os.fstat(opened.fileno())
+            if (
+                not stat.S_ISREG(current.st_mode)
+                or current.st_size != before.st_size
+                or current.st_dev != before.st_dev
+                or current.st_ino != before.st_ino
+            ):
+                raise ServiceConnectorError("public content upload source changed")
+            maximum = discovery["limits"]["maxContentObjectBytes"]
+            if not 1 <= current.st_size <= maximum:
+                raise ServiceConnectorError("public content upload source exceeds the service limit")
+            hasher = sha256()
+            while True:
+                chunk = opened.read(128 * 1024)
+                if not isinstance(chunk, bytes) or len(chunk) > 128 * 1024:
+                    raise ServiceConnectorError("public content upload source is invalid")
+                if not chunk:
+                    break
+                hasher.update(chunk)
+            digest = "sha256:" + hasher.hexdigest()
+            descriptor = next(
+                (
+                    item
+                    for item in checked_plan["requiredObjects"]
+                    if item["role"] == role and item["digest"] == digest and item["byteLength"] == current.st_size
+                ),
+                None,
+            )
+            if descriptor is None:
+                raise ServiceConnectorError("public content upload source is outside the signed plan")
+            opened.seek(0)
+            upload = getattr(self._transport, "upload_file", None)
+            if not callable(upload):
+                raise ServiceConnectorError("configured service transport cannot stream uploads")
+            response = upload(
+                self.profile.api_base_url + f"/v1/submissions/{checked_plan['submissionRef']}/objects/{role}/{digest}",
+                headers={
+                    "accept": "application/json",
+                    "authorization": f"Bearer {self.profile.access_token}",
+                    "content-type": _ARTIFACT_CONTENT_TYPE,
+                    "content-length": str(current.st_size),
+                    "x-limitless-content-digest": digest,
+                    "user-agent": "limitless-library/0.1.0a0",
+                },
+                source=opened,
+                byte_length=current.st_size,
+                expected_digest=digest,
+                maximum_bytes=MAX_CONTENT_TRANSFER_RESULT_BYTES,
+                timeout_seconds=self._upload_timeout_seconds,
+            )
+            after = os.fstat(opened.fileno())
+            if after.st_size != current.st_size or after.st_dev != current.st_dev or after.st_ino != current.st_ino:
+                raise ServiceConnectorError("public content upload source changed")
+        except ServiceConnectorError:
+            raise
+        except OSError as error:
+            raise ServiceConnectorError("public content upload source is unavailable") from error
+        finally:
+            if opened is not None:
+                opened.close()
+
+        if response.status in {401, 403}:
+            raise ServiceConnectorError("managed service upload authorization failed")
+        if response.status in {429, 500, 502, 503, 504}:
+            raise ServiceUnavailableError("managed service is unavailable; continue locally")
+        if response.status == 428:
+            raise ServiceConnectorError("current publication policy acceptance is required")
+        if response.status not in {200, 201}:
+            raise ServiceConnectorError("managed service rejected the content upload")
+        headers = self._response_headers(response.headers)
+        if _JSON_CONTENT_TYPE.fullmatch(headers.get("content-type", "")) is None:
+            raise ServiceConnectorError("service upload response content type is invalid")
+        try:
+            value = strict_json_loads(response.body.decode("utf-8"))
+            result = validate_content_transfer_result(
+                value,
+                expected_plan=checked_plan,
+            )
+        except (
+            UnicodeError,
+            json.JSONDecodeError,
+            PublicSubmissionContractError,
+            TypeError,
+            ValueError,
+        ) as error:
+            raise ServiceConnectorError("service content upload result is invalid") from error
+        if descriptor is None or (result["role"], result["digest"], result["byteLength"]) != (
+            descriptor["role"],
+            descriptor["digest"],
+            descriptor["byteLength"],
+        ):
+            raise ServiceConnectorError("service content upload result is unbound")
+        return result
+
+    def submission_status(self, submission_ref: str) -> dict[str, Any]:
+        """Return one publisher-visible admission status without candidate leakage."""
+
+        if self.profile.access_token is None:
+            raise ServiceConnectorError("managed service authorization is required")
+        if not isinstance(submission_ref, str) or re.fullmatch(r"submission:[0-9a-f]{32}", submission_ref) is None:
+            raise ServiceConnectorError("public submission reference is invalid")
+        response = self._request_json(
+            "POST",
+            f"/v1/submissions/{submission_ref}/admission-status",
+            body=None,
+            maximum_bytes=MAX_PUBLICATION_STATUS_BYTES,
+            authenticated=True,
+        )
+        try:
+            return validate_public_admission_status(
+                response,
+                expected_submission_ref=submission_ref,
+            )
+        except PublicAdmissionContractError as error:
+            raise ServiceConnectorError("public admission status is invalid") from error
+
+    def revoke_submission_release(
+        self,
+        request: dict[str, Any],
+        *,
+        publisher_public_key: bytes,
+    ) -> dict[str, Any]:
+        """Withdraw one exact publisher-owned release through a signed request."""
+
+        if self.profile.access_token is None:
+            raise ServiceConnectorError("managed service authorization is required")
+        now = self._now()
+        try:
+            key_id = request["publisher"]["keyId"]
+            checked = validate_public_release_revocation_request(
+                request,
+                public_keys={key_id: publisher_public_key},
+                at=now,
+            )
+        except (KeyError, PublicAdmissionContractError, TypeError, ValueError) as error:
+            raise ServiceConnectorError("public release revocation is invalid") from error
+        if checked["serviceId"] != self.profile.service_id:
+            raise ServiceConnectorError("public release revocation names another service")
+        response = self._request_json(
+            "POST",
+            f"/v1/submissions/{checked['submissionRef']}/revocations",
+            body=checked,
+            maximum_bytes=MAX_PUBLICATION_STATUS_BYTES,
+            maximum_request_bytes=MAX_SIGNED_REQUEST_BYTES,
+            authenticated=True,
+        )
+        try:
+            status = validate_public_admission_status(
+                response,
+                expected_submission_ref=checked["submissionRef"],
+            )
+        except PublicAdmissionContractError as error:
+            raise ServiceConnectorError("public release revocation response is invalid") from error
+        if (
+            status["state"] != "revoked"
+            or status["releaseRef"] is None
+            or status["releaseRef"]["releaseId"] != checked["releaseId"]
+        ):
+            raise ServiceConnectorError("public release revocation response is unbound")
+        return status
 
     def build_query(
         self,

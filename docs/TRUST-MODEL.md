@@ -17,6 +17,13 @@ credential-free activation state is stored. TLS protects transport; the
 release-pinned root authenticates service content. Alternate profiles remain
 an advanced, explicit operator surface.
 
+Activation also creates a service-specific Ed25519 installation key and
+verifies the service's signed attestation before obtaining a short-lived
+anonymous session. The key remains in an owner-only local file. Public
+publication additionally requires an explicit policy confirmation and a
+signed intent that names exact selected objects; the client never treats
+workspace discovery or connection as publication consent.
+
 ## Enforced properties
 
 - Strict JSON rejects duplicate keys and non-finite values.
@@ -45,11 +52,12 @@ system. A technical adoption receipt does not mean a human owner accepted a
 production dependency or would pay for the service.
 
 The local catalog has no publisher signature, revocation distribution,
-multi-tenant isolation, or supply-chain transparency log. The optional service
-connector validates remote endpoint and result authority but does not itself
-implement the service's identity, revocation, tenancy, or publication systems.
-Do not treat a local capsule declaration or a merely reachable endpoint as a
-security boundary between mutually distrusting parties.
+multi-tenant isolation, or supply-chain transparency log. The optional client
+validates remote endpoint/result authority and publisher-facing
+submission/admission records, but it does not itself implement the service's
+identity, revocation, tenancy, admission, or storage systems. Do not treat a
+local capsule declaration or a merely reachable endpoint as a security
+boundary between mutually distrusting parties.
 
 ## Failure behavior
 
@@ -60,5 +68,7 @@ fallback and no partial-success receipt.
 
 For an opted-in service, redirects, root-chain gaps, expired discovery,
 unknown result keys, policy drift, query rebinding, incompatible selections,
-and malformed responses also fail closed. Availability and rate-limit failures
-return control to local reuse without fabricating a selection.
+malformed responses, changed publication files, unsigned plans, excessive or
+misbound upload requests, and stale publication policy also fail closed.
+Availability and rate-limit failures return control to local reuse without
+fabricating a selection.

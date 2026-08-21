@@ -54,15 +54,18 @@ in `limitless_library.service_contracts`:
   compatibility;
 - current result `limitless.service-query-result/1.3`, with validation-only
   `1.0`–`1.2` compatibility;
-- current discovery `limitless.service-discovery/1.1`, with `1.0`
+- current discovery `limitless.service-discovery/1.2`, with `1.0` and `1.1`
   compatibility;
 - `limitless.service-root-key-transition/1.0` and its bounded set;
 - `limitless.service-profile/1.1`, official-service locator `1.0`, and local
   activation state `1.0`;
 - installation registration, service attestation, session request, and session
   response `1.0` records;
-- outcome attempt/receipt `1.0`; and
-- submission, transfer-grant, and immutable-release `1.0` contracts.
+- outcome attempt/receipt `1.0`;
+- signed submission intent `1.1`, plan `1.0`, content-transfer grant/result
+  `1.0`, and immutable release `1.1`; and
+- contribution-policy acceptance, admission assessment/status, and release
+  revocation `1.0` records.
 
 The packaged `limitless_library.conformance` corpora contain signed positive
 vectors and declared negative mutations for the query lifecycle, anonymous
@@ -77,6 +80,15 @@ at most 128 KiB of `application/octet-stream`, binds its length and digest to
 the signed selection, and stages it without overwrite. Receiver installation,
 verification, observed invocation, and outcome submission remain distinct
 events.
+
+Public contribution uses a separate query-free data plane. Signed discovery
+advertises its upload version and maximum object size. The client negotiates a
+digest-first signed plan, then sends each missing object with `PUT` to the
+submission-, role-, and digest-bound path. Length, digest, media type,
+publisher session, current policy acceptance, and admission state must all
+agree before immutable publication. A transfer result is non-authoritative;
+the client retries negotiation to establish that the object catalog now sees
+the exact bytes.
 
 See [Managed-service connector](MANAGED-SERVICE.md) for one-action official
 activation, advanced profiles, and the HTTPS boundary.
