@@ -16,7 +16,7 @@ import threading
 import time
 from base64 import urlsafe_b64decode
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
@@ -31,6 +31,13 @@ from urllib.request import (
 
 from ._service_support import decode_root_keys
 from .contracts import canonical_json_bytes, sha256_bytes, strict_json_loads
+from .installation_identity_contracts import (
+    MAX_ATTESTATION_BYTES,
+    MAX_SESSION_RESPONSE_BYTES,
+)
+from .installation_identity_contracts import (
+    MAX_REQUEST_BYTES as MAX_INSTALLATION_REQUEST_BYTES,
+)
 from .service_contracts import (
     MAX_DISCOVERY_BYTES,
     MAX_QUERY_BYTES,
@@ -187,9 +194,7 @@ class ServiceProfile:
         if (
             not audiences
             or len(audiences) > 4
-            or not set(audiences).issubset(
-                {"private", "circle", "organization", "public"}
-            )
+            or not set(audiences).issubset({"private", "circle", "organization", "public"})
         ):
             raise ValueError("service requested audiences are invalid")
         if self.access_token is not None and (
@@ -239,11 +244,7 @@ class ServiceProfile:
                 }[item]
                 for item in checked["requestedScopes"]
             )
-            history_mode = (
-                "service-persisted"
-                if mode in {"history", "organization"}
-                else "local-only"
-            )
+            history_mode = "service-persisted" if mode in {"history", "organization"} else "local-only"
             default_audience = "private"
         else:
             requested_audiences = tuple(checked["requestedAudiences"])
@@ -433,7 +434,7 @@ class ServiceConnector:
         )
         if response.status in {401, 403}:
             raise ServiceConnectorError("managed service authorization failed")
-        if response.status in {429, 502, 503, 504}:
+        if response.status in {429, 500, 502, 503, 504}:
             raise ServiceUnavailableError("managed service is unavailable; continue locally")
         if response.status != 200:
             raise ServiceConnectorError("managed service rejected the request")
@@ -444,6 +445,44 @@ class ServiceConnector:
         if not isinstance(value, dict):
             raise ServiceConnectorError("service response must be an object")
         return value
+
+    def with_access_token(self, access_token: str) -> ServiceConnector:
+        """Return an authorized connector while retaining verified discovery."""
+
+        profile = replace(self.profile, access_token=access_token)
+        connected = ServiceConnector(
+            profile,
+            transport=self._transport,
+            clock=self._clock,
+            timeout_seconds=self._timeout_seconds,
+            cache_seconds=self._cache_seconds,
+        )
+        with self._lock:
+            connected._cached = self._cached
+            connected._cached_until = self._cached_until
+        return connected
+
+    def register_installation(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Submit one self-proved registration without ambient credentials."""
+
+        return self._request_json(
+            "POST",
+            "/v1/installations",
+            body=request,
+            maximum_bytes=MAX_ATTESTATION_BYTES,
+            maximum_request_bytes=MAX_INSTALLATION_REQUEST_BYTES,
+        )
+
+    def open_installation_session(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Exchange current-key proof for a short-lived anonymous bearer."""
+
+        return self._request_json(
+            "POST",
+            "/v1/installations/sessions",
+            body=request,
+            maximum_bytes=MAX_SESSION_RESPONSE_BYTES,
+            maximum_request_bytes=MAX_INSTALLATION_REQUEST_BYTES,
+        )
 
     @staticmethod
     def _current_roots(
@@ -544,9 +583,7 @@ class ServiceConnector:
         if (
             service_query_execution_mode(checked_query) != self.profile.execution_mode
             or service_query_history_mode(checked_query) != self.profile.history_mode
-            or not set(service_query_audiences(checked_query)).issubset(
-                set(self.profile.requested_audiences)
-            )
+            or not set(service_query_audiences(checked_query)).issubset(set(self.profile.requested_audiences))
         ):
             raise ServiceConnectorError("service query exceeds the opted-in profile")
         maximum = min(

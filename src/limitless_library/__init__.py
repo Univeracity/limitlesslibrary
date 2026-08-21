@@ -11,6 +11,7 @@ from .official_service import (
     OfficialServiceNotConfiguredError,
     OfficialServiceUnavailableError,
     activate_official_service,
+    activated_service_connector,
     activated_service_profile,
     activation_details,
 )
@@ -46,6 +47,7 @@ __all__ = [
     "UrllibServiceTransport",
     "VerifiedService",
     "activate_official_service",
+    "activated_service_connector",
     "activated_service_profile",
     "activation_details",
     "adopt_exact_component",

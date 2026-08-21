@@ -59,13 +59,16 @@ in `limitless_library.service_contracts`:
 - `limitless.service-root-key-transition/1.0` and its bounded set;
 - `limitless.service-profile/1.1`, official-service locator `1.0`, and local
   activation state `1.0`;
+- installation registration, service attestation, session request, and session
+  response `1.0` records;
 - outcome attempt/receipt `1.0`; and
 - submission, transfer-grant, and immutable-release `1.0` contracts.
 
 The packaged `limitless_library.conformance` corpora contain signed positive
-vectors and declared negative mutations for the query lifecycle and root-key
-rotation. These records are the public compatibility surface; private ranking,
-identity, policy evaluation, persistence, and deployment records are not.
+vectors and declared negative mutations for the query lifecycle, anonymous
+installation identity, and root-key rotation. These records are the public
+compatibility surface; private ranking, identity persistence, policy
+evaluation, service storage, and deployment records are not.
 
 See [Managed-service connector](MANAGED-SERVICE.md) for one-action official
 activation, advanced profiles, and the HTTPS boundary.

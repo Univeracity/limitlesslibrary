@@ -26,11 +26,19 @@ over-limit responses, then verifies:
 - the exact API endpoint and accepted policy digest; and
 - the advertised transition-chain tip and protocol compatibility.
 
+The same action generates one service-specific Ed25519 installation key,
+self-proves its public registration, verifies the service-signed attestation,
+and opens a short-lived anonymous session with the baseline query, delivery,
+circle, and submission capabilities. The client does not make the user choose
+those protocol scopes.
+
 Only after every check passes does the client atomically store credential-free
-activation state under the user's configuration directory. Repeating the same
-action is local and idempotent. An authority change requires a separate,
-explicit replacement decision. Availability failure leaves the local-only
-default unchanged.
+activation state under the user's configuration directory. The private key
+and current bearer live in a separate owner-only file, never in the activation
+record or public output. Repeating the action is idempotent, rechecks service
+authority, and reuses a live session; an expired session renews through one
+signed POST. An authority change requires a separate, explicit replacement
+decision. Availability failure leaves the local-only default unchanged.
 
 This source release intentionally ships without a live locator. Until an owner
 publishes one through a supported release, `service-activate` reports that the
@@ -62,10 +70,11 @@ limitless service-query \
   --receiver ./receiver-context.json
 ```
 
-Baseline public access is credential-free. If an authenticated feature is
-later used, its bearer credential is supplied only through
-`LIMITLESS_SERVICE_TOKEN`; it is excluded from profiles, activation state,
-public output, object representations, and query bodies.
+Baseline public access requires no user credential: the client automatically
+uses its pseudonymous installation session. A caller may still supply an
+explicit advanced bearer through `LIMITLESS_SERVICE_TOKEN`; bearer material is
+excluded from profiles, activation state, public output, object
+representations, URLs, and query bodies.
 
 The connector accepts only audiences and history behavior already present in
 the activated profile. It verifies that the signed result binds the exact
@@ -95,13 +104,13 @@ vocabulary.
 
 Python callers use `ServiceProfile`, `ServiceConnector`, and the functions in
 `limitless_library.official_service`. Packaged conformance corpora freeze the
-signed query lifecycle and root-rotation behavior for other language
-implementations.
+signed query lifecycle, installation registration/session records, and
+root-rotation behavior for other language implementations.
 
 ## Deliberate exclusions
 
 Connecting does not publish work, enumerate a workspace, upload a local
 catalog, install a returned component, hand off to a native provider, or submit
 local outcome evidence. Those are separate owner-authorized continuations. The
-managed implementation, identity system, ranking, persistence, analytics, and
-deployment remain outside this repository.
+service-side identity authority, managed implementation, ranking, persistence,
+analytics, and deployment remain outside this repository.

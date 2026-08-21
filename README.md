@@ -137,7 +137,8 @@ candidate exists, Limitless abstains without disclosing one.
 - Receiver-owned adherence and obligation verification under Bubblewrap.
 - Python embedding and bounded stdio MCP connector surfaces.
 - Versioned managed-service wire contracts, signed conformance corpora, and an
-  explicitly activated, release-pinned HTTPS connector.
+  explicitly activated, release-pinned HTTPS connector with anonymous
+  installation identity and short-lived sessions.
 - Authoring and sealing commands, a one-command demo, conformance fixtures,
   and tests.
 
@@ -184,8 +185,10 @@ Local use remains the default. An official client release can bundle one
 content-addressed service locator. A single explicit action fetches the exact
 credential-free profile, verifies its pinned identity, Ed25519 root and
 rotation chain, accepted policy, and discovery record, then stores that trust
-boundary locally. No account, downloaded profile, or API key is required for
-baseline public access.
+boundary locally. It also creates one service-specific signing key, verifies
+the service's installation attestation, and obtains a short-lived anonymous
+session. No account, downloaded profile, pasted token, or API key is required
+for baseline public access.
 
 ```bash
 limitless service-activate

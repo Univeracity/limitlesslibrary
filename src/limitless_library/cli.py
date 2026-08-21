@@ -14,6 +14,7 @@ from .demo import DemoError, format_demo, run_demo
 from .installer import AdoptionError, adopt_exact_component, seal_recipe, validate_recipe
 from .official_service import (
     activate_official_service,
+    activated_service_connector,
     activated_service_profile,
     activation_details,
 )
@@ -57,6 +58,8 @@ def _format_doctor(result: dict[str, object]) -> str:
 def _service_connector(profile_path: Path | None) -> ServiceConnector:
     try:
         token = os.environ.get("LIMITLESS_SERVICE_TOKEN")
+        if profile_path is None and token is None:
+            return activated_service_connector()
         profile = (
             activated_service_profile(access_token=token)
             if profile_path is None

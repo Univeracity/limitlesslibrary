@@ -23,3 +23,5 @@
   credential-free local state, local fallback, and advanced alternate profiles.
 - Current execution/audience/history query and result contracts, including
   circle vocabulary, header-carried delivery authority, and legacy validation.
+- Account-free official-service registration and short-lived sessions using a
+  service-specific installation key held separately from activation state.
