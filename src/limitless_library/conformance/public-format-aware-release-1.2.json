@@ -1,0 +1,318 @@
+{
+  "acceptedPlan": {
+    "expiresAt": "2026-08-21T16:05:00Z",
+    "intentDigest": "sha256:a20e029415e089c9d40c56ed7f7255f81cf307a2d5ab09f7f493e92d9aac64d4",
+    "issuedAt": "2026-08-21T16:00:00Z",
+    "planDigest": "sha256:9f89cbc99b0c1f9fbfee48ade3e5e7161e0cd28597d33140c5a9a4d9a2a30b44",
+    "reasonCodes": [],
+    "requestId": "request:format-aware-conformance",
+    "requiredObjects": [],
+    "reviewStages": [
+      "rights",
+      "security"
+    ],
+    "schemaVersion": "limitless.service-submission-plan/1.0",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:installation:c945cbf2a5602002141e2fb9d17054d6",
+      "value": "ZQe5H_rPLswQvtGtP0uPr4OR8b3mRVejqId2N8WCX5P6miUMPqWZ26As3QJZd3iZSppZi6_57ZsWK4yctiUkAg"
+    },
+    "state": "accepted",
+    "submissionRef": "submission:a20e029415e089c9d40c56ed7f7255f8"
+  },
+  "corpusDigest": "sha256:9ed305b60abe28bece2be23eb93f117e1692ad5e15241215ec7b5047f9313769",
+  "expected": {
+    "artifactDigest": "sha256:0480a33cd7131a97ae50816acd32ecbf2c3273498ab37421eed4b5a06e11e135",
+    "format": "limitless.exact-file-bundle/1.0",
+    "intentDigest": "sha256:a20e029415e089c9d40c56ed7f7255f81cf307a2d5ab09f7f493e92d9aac64d4",
+    "mediaType": "application/vnd.limitless.exact-file-bundle+json",
+    "releaseDigest": "sha256:42b3a5603d6c5259a9f41310ed037604ed668197f525b263938dd5118aa799b6",
+    "releaseId": "release:42b3a5603d6c5259a9f41310ed037604",
+    "validAt": "2026-08-21T16:04:00Z"
+  },
+  "intent": {
+    "buildContext": {
+      "architecture": "x86_64",
+      "interfaces": [
+        "limitless.mcp/v1"
+      ],
+      "platform": "linux",
+      "runtime": "python",
+      "version": "3.13"
+    },
+    "candidate": {
+      "capabilities": [
+        "limitless.mcp/v1"
+      ],
+      "summary": "A receiver-verifiable exact file bundle.",
+      "title": "Portable exact component",
+      "treatment": "exact-component"
+    },
+    "compatibility": {
+      "supportedTargets": [
+        {
+          "architecture": "x86_64",
+          "interfaces": [
+            "limitless.mcp/v1"
+          ],
+          "platform": "linux",
+          "runtime": "python",
+          "versionRange": ">=3.11,<4"
+        }
+      ],
+      "verifiedTargets": [
+        {
+          "evidenceDigests": [
+            "sha256:a5ea769ae749319021400d135ad2c4b94685bbe8dee81e33e36d3a217a638ce4"
+          ],
+          "target": {
+            "architecture": "x86_64",
+            "interfaces": [
+              "limitless.mcp/v1"
+            ],
+            "platform": "linux",
+            "runtime": "python",
+            "versionRange": ">=3.11,<4"
+          }
+        }
+      ]
+    },
+    "contentObjects": [
+      {
+        "byteLength": 401,
+        "digest": "sha256:0480a33cd7131a97ae50816acd32ecbf2c3273498ab37421eed4b5a06e11e135",
+        "format": "limitless.exact-file-bundle/1.0",
+        "mediaType": "application/vnd.limitless.exact-file-bundle+json",
+        "role": "artifact"
+      },
+      {
+        "byteLength": 201,
+        "digest": "sha256:5c078541906bc11f8d4ae10ed3da98991c5aaa602475607f126cb99a71a7b878",
+        "role": "manifest"
+      }
+    ],
+    "destination": {
+      "audience": "public",
+      "collectionId": "collection:public"
+    },
+    "evidenceDigests": [
+      "sha256:a5ea769ae749319021400d135ad2c4b94685bbe8dee81e33e36d3a217a638ce4"
+    ],
+    "intentDigest": "sha256:a20e029415e089c9d40c56ed7f7255f81cf307a2d5ab09f7f493e92d9aac64d4",
+    "lineage": {
+      "lineageId": "lineage:portable-exact-component",
+      "parents": [],
+      "releaseClass": "initial",
+      "supersedes": null,
+      "version": "1.0.0"
+    },
+    "publisher": {
+      "authorityId": "installation-space:format-aware-conformance",
+      "keyId": "key:installation:65b60673d6ed884bf01c2c222d82ada0",
+      "publisherId": "key:installation:65b60673d6ed884bf01c2c222d82ada0"
+    },
+    "requestId": "request:format-aware-conformance",
+    "rights": {
+      "allowedUses": [
+        "build-application"
+      ],
+      "grantedBy": "key:installation:65b60673d6ed884bf01c2c222d82ada0",
+      "hasAuthority": true,
+      "license": "Apache-2.0",
+      "policyDigest": "sha256:3216cc3da07f41ac010ca2d8dcc09ea44ac9378d00ff0ce183f621d7e833d48f"
+    },
+    "schemaVersion": "limitless.service-submission-intent/1.2",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:installation:65b60673d6ed884bf01c2c222d82ada0",
+      "value": "on35aE_6ixx4asSLaTBy6nUom9T5lXwpFcoTET94j-XJCnx1Cn_WofAeCsSYW02x9thVlJuoDxoTlDpE0DP9DA"
+    },
+    "submittedAt": "2026-08-21T16:00:00Z"
+  },
+  "invalidCases": [
+    {
+      "id": "intent-format-substitution",
+      "path": "/contentObjects/0/format",
+      "record": "intent",
+      "value": "application/zip"
+    },
+    {
+      "id": "intent-media-substitution",
+      "path": "/contentObjects/0/mediaType",
+      "record": "intent",
+      "value": "application/json"
+    },
+    {
+      "id": "intent-oversize-artifact",
+      "path": "/contentObjects/0/byteLength",
+      "record": "intent",
+      "value": 67108865
+    },
+    {
+      "id": "intent-signature-mutation",
+      "path": "/signature/value",
+      "record": "intent",
+      "value": "An35aE_6ixx4asSLaTBy6nUom9T5lXwpFcoTET94j-XJCnx1Cn_WofAeCsSYW02x9thVlJuoDxoTlDpE0DP9DA"
+    },
+    {
+      "id": "release-format-substitution",
+      "path": "/contentObjects/0/format",
+      "record": "release",
+      "value": "application/zip"
+    },
+    {
+      "id": "release-media-substitution",
+      "path": "/contentObjects/0/mediaType",
+      "record": "release",
+      "value": "application/json"
+    },
+    {
+      "id": "release-signature-mutation",
+      "path": "/signature/value",
+      "record": "release",
+      "value": "AgcTe57hJWaPptYdSjjoBziFY_jQF1OSSxUp4QrvGPWPCt5-EIpytkug-BAB4OjRLFrv4kOu4PAco8AIpc4GAg"
+    }
+  ],
+  "needsContentPlan": {
+    "expiresAt": "2026-08-21T16:05:00Z",
+    "intentDigest": "sha256:a20e029415e089c9d40c56ed7f7255f81cf307a2d5ab09f7f493e92d9aac64d4",
+    "issuedAt": "2026-08-21T16:00:00Z",
+    "planDigest": "sha256:f7e7b1607e7bf904c69e31ab509a596e5203dfc72cb616b1a3862285ad86df70",
+    "reasonCodes": [],
+    "requestId": "request:format-aware-conformance",
+    "requiredObjects": [
+      {
+        "byteLength": 401,
+        "digest": "sha256:0480a33cd7131a97ae50816acd32ecbf2c3273498ab37421eed4b5a06e11e135",
+        "role": "artifact"
+      },
+      {
+        "byteLength": 201,
+        "digest": "sha256:5c078541906bc11f8d4ae10ed3da98991c5aaa602475607f126cb99a71a7b878",
+        "role": "manifest"
+      }
+    ],
+    "reviewStages": [
+      "rights",
+      "security"
+    ],
+    "schemaVersion": "limitless.service-submission-plan/1.0",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:installation:c945cbf2a5602002141e2fb9d17054d6",
+      "value": "OJZXYNbbXiRoBBheQzt3Wf96B-46cTJ7goNtCupUHb7Yzk1_cOnfSMppZA6i1V7SuD20mFQfxHJGWU8OR7LKBA"
+    },
+    "state": "needs-content",
+    "submissionRef": "submission:a20e029415e089c9d40c56ed7f7255f8"
+  },
+  "publicKeys": {
+    "publisher": {
+      "algorithm": "ed25519",
+      "keyId": "key:installation:65b60673d6ed884bf01c2c222d82ada0",
+      "publicKey": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"
+    },
+    "service": {
+      "algorithm": "ed25519",
+      "keyId": "key:installation:c945cbf2a5602002141e2fb9d17054d6",
+      "publicKey": "5_FioQvsVZr-oZXk3OhLaVaNXSywlj60RsBoXisX8vA"
+    }
+  },
+  "release": {
+    "buildContext": {
+      "architecture": "x86_64",
+      "interfaces": [
+        "limitless.mcp/v1"
+      ],
+      "platform": "linux",
+      "runtime": "python",
+      "version": "3.13"
+    },
+    "candidate": {
+      "capabilities": [
+        "limitless.mcp/v1"
+      ],
+      "summary": "A receiver-verifiable exact file bundle.",
+      "title": "Portable exact component",
+      "treatment": "exact-component"
+    },
+    "compatibility": {
+      "supportedTargets": [
+        {
+          "architecture": "x86_64",
+          "interfaces": [
+            "limitless.mcp/v1"
+          ],
+          "platform": "linux",
+          "runtime": "python",
+          "versionRange": ">=3.11,<4"
+        }
+      ],
+      "verifiedTargets": [
+        {
+          "evidenceDigests": [
+            "sha256:a5ea769ae749319021400d135ad2c4b94685bbe8dee81e33e36d3a217a638ce4"
+          ],
+          "target": {
+            "architecture": "x86_64",
+            "interfaces": [
+              "limitless.mcp/v1"
+            ],
+            "platform": "linux",
+            "runtime": "python",
+            "versionRange": ">=3.11,<4"
+          }
+        }
+      ]
+    },
+    "contentObjects": [
+      {
+        "byteLength": 401,
+        "digest": "sha256:0480a33cd7131a97ae50816acd32ecbf2c3273498ab37421eed4b5a06e11e135",
+        "format": "limitless.exact-file-bundle/1.0",
+        "mediaType": "application/vnd.limitless.exact-file-bundle+json",
+        "role": "artifact"
+      },
+      {
+        "byteLength": 201,
+        "digest": "sha256:5c078541906bc11f8d4ae10ed3da98991c5aaa602475607f126cb99a71a7b878",
+        "role": "manifest"
+      }
+    ],
+    "createdAt": "2026-08-21T16:00:00Z",
+    "evidenceDigests": [
+      "sha256:a5ea769ae749319021400d135ad2c4b94685bbe8dee81e33e36d3a217a638ce4"
+    ],
+    "lineage": {
+      "lineageId": "lineage:portable-exact-component",
+      "parents": [],
+      "releaseClass": "initial",
+      "supersedes": null,
+      "version": "1.0.0"
+    },
+    "publisherId": "key:installation:65b60673d6ed884bf01c2c222d82ada0",
+    "releaseDigest": "sha256:42b3a5603d6c5259a9f41310ed037604ed668197f525b263938dd5118aa799b6",
+    "releaseId": "release:42b3a5603d6c5259a9f41310ed037604",
+    "reviewEvidenceDigests": [
+      "sha256:6a40f988d1b65ba43e28cb26f04d1737809a93348b95b2b8ab778fe29b52f4f7"
+    ],
+    "reviewerId": "service:format-aware-curator",
+    "rights": {
+      "allowedUses": [
+        "build-application"
+      ],
+      "grantedBy": "key:installation:65b60673d6ed884bf01c2c222d82ada0",
+      "hasAuthority": true,
+      "license": "Apache-2.0",
+      "policyDigest": "sha256:3216cc3da07f41ac010ca2d8dcc09ea44ac9378d00ff0ce183f621d7e833d48f"
+    },
+    "schemaVersion": "limitless.service-release/1.2",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:installation:c945cbf2a5602002141e2fb9d17054d6",
+      "value": "ggcTe57hJWaPptYdSjjoBziFY_jQF1OSSxUp4QrvGPWPCt5-EIpytkug-BAB4OjRLFrv4kOu4PAco8AIpc4GAg"
+    },
+    "submissionIntentDigest": "sha256:a20e029415e089c9d40c56ed7f7255f81cf307a2d5ab09f7f493e92d9aac64d4",
+    "submissionPlanDigest": "sha256:9f89cbc99b0c1f9fbfee48ade3e5e7161e0cd28597d33140c5a9a4d9a2a30b44"
+  },
+  "schemaVersion": "limitless.public-format-aware-release-conformance/1.0"
+}

@@ -26,19 +26,31 @@ from .contracts import ContractError as ControlPlaneContractError
 from .contracts import canonical_json_bytes, parse_utc, sha256_json
 
 SUBMISSION_INTENT_SCHEMA_VERSION_1_0 = "limitless.service-submission-intent/1.0"
-SUBMISSION_INTENT_SCHEMA_VERSION = "limitless.service-submission-intent/1.1"
+SUBMISSION_INTENT_SCHEMA_VERSION_1_1 = "limitless.service-submission-intent/1.1"
+SUBMISSION_INTENT_SCHEMA_VERSION_1_2 = "limitless.service-submission-intent/1.2"
+SUBMISSION_INTENT_SCHEMA_VERSION = SUBMISSION_INTENT_SCHEMA_VERSION_1_1
 SUBMISSION_INTENT_SCHEMA_VERSIONS = (
     SUBMISSION_INTENT_SCHEMA_VERSION_1_0,
     SUBMISSION_INTENT_SCHEMA_VERSION,
+)
+SUBMISSION_INTENT_VALIDATION_VERSIONS = (
+    *SUBMISSION_INTENT_SCHEMA_VERSIONS,
+    SUBMISSION_INTENT_SCHEMA_VERSION_1_2,
 )
 SUBMISSION_PLAN_SCHEMA_VERSION = "limitless.service-submission-plan/1.0"
 CONTENT_TRANSFER_GRANT_SCHEMA_VERSION = "limitless.service-content-transfer-grant/1.0"
 CONTENT_TRANSFER_RESULT_SCHEMA_VERSION = "limitless.service-content-transfer-result/1.0"
 IMMUTABLE_RELEASE_SCHEMA_VERSION_1_0 = "limitless.service-release/1.0"
-IMMUTABLE_RELEASE_SCHEMA_VERSION = "limitless.service-release/1.1"
+IMMUTABLE_RELEASE_SCHEMA_VERSION_1_1 = "limitless.service-release/1.1"
+IMMUTABLE_RELEASE_SCHEMA_VERSION_1_2 = "limitless.service-release/1.2"
+IMMUTABLE_RELEASE_SCHEMA_VERSION = IMMUTABLE_RELEASE_SCHEMA_VERSION_1_1
 IMMUTABLE_RELEASE_SCHEMA_VERSIONS = (
     IMMUTABLE_RELEASE_SCHEMA_VERSION_1_0,
     IMMUTABLE_RELEASE_SCHEMA_VERSION,
+)
+IMMUTABLE_RELEASE_VALIDATION_VERSIONS = (
+    *IMMUTABLE_RELEASE_SCHEMA_VERSIONS,
+    IMMUTABLE_RELEASE_SCHEMA_VERSION_1_2,
 )
 SIGNATURE_ALGORITHM = "ed25519"
 
@@ -49,6 +61,7 @@ MAX_CONTENT_TRANSFER_RESULT_BYTES = 1024
 MAX_RELEASE_BYTES = 32 * 1024
 MAX_PLAN_TTL = timedelta(minutes=10)
 MAX_CONTENT_TRANSFER_GRANT_TTL = timedelta(minutes=10)
+MAX_EXACT_ARTIFACT_BYTES = 64 * 1024 * 1024
 
 RELEASE_CLASSES = ("initial", "revision", "upgrade", "fork")
 VISIBILITIES = ("private", "organization", "exchange", "public")
@@ -56,6 +69,14 @@ AUDIENCES = ("private", "circle", "organization", "public")
 OBJECT_ROLES = ("artifact", "manifest", "method", "verification")
 PLAN_STATES = ("accepted", "needs-content", "rejected")
 REVIEW_GATES = ("rights", "provenance", "compatibility", "security", "quality")
+_CURRENT_INTENT_VERSIONS = frozenset(
+    {SUBMISSION_INTENT_SCHEMA_VERSION_1_1, SUBMISSION_INTENT_SCHEMA_VERSION_1_2}
+)
+_CURRENT_RELEASE_VERSIONS = frozenset(
+    {IMMUTABLE_RELEASE_SCHEMA_VERSION_1_1, IMMUTABLE_RELEASE_SCHEMA_VERSION_1_2}
+)
+_EXACT_ARTIFACT_FORMAT = "limitless.exact-file-bundle/1.0"
+_EXACT_ARTIFACT_MEDIA_TYPE = "application/vnd.limitless.exact-file-bundle+json"
 
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9._:-]{0,199}$")
 _REQUEST = re.compile(r"^request:[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$")
@@ -236,13 +257,18 @@ def _lineage(value: Any) -> dict[str, Any]:
     }
 
 
-def _objects(value: Any) -> list[dict[str, Any]]:
+def _objects(value: Any, *, format_aware: bool = False) -> list[dict[str, Any]]:
     if not isinstance(value, list) or not 1 <= len(value) <= 32:
         raise PublicSubmissionContractError("contentObjects are invalid")
     objects: list[dict[str, Any]] = []
     for raw in value:
-        item = _exact(raw, {"role", "digest", "byteLength"}, "content object")
-        role = _text(item["role"], "content object role", maximum=20)
+        if not isinstance(raw, dict):
+            raise PublicSubmissionContractError("content object has an unsupported shape")
+        role = _text(raw.get("role"), "content object role", maximum=20)
+        fields = {"role", "digest", "byteLength"}
+        if format_aware and role == "artifact":
+            fields.update({"format", "mediaType"})
+        item = _exact(raw, fields, "content object")
         length = item["byteLength"]
         if (
             role not in OBJECT_ROLES
@@ -251,7 +277,28 @@ def _objects(value: Any) -> list[dict[str, Any]]:
             or not 1 <= length <= 1_073_741_824
         ):
             raise PublicSubmissionContractError("content object is invalid")
-        objects.append({"role": role, "digest": _digest(item["digest"], "content object digest"), "byteLength": length})
+        checked = {
+            "role": role,
+            "digest": _digest(item["digest"], "content object digest"),
+            "byteLength": length,
+        }
+        if format_aware and role == "artifact":
+            artifact_format = _text(
+                item["format"], "content object format", maximum=96
+            )
+            media_type = _text(
+                item["mediaType"], "content object mediaType", maximum=96
+            )
+            if (
+                length > MAX_EXACT_ARTIFACT_BYTES
+                or artifact_format != _EXACT_ARTIFACT_FORMAT
+                or media_type != _EXACT_ARTIFACT_MEDIA_TYPE
+            ):
+                raise PublicSubmissionContractError(
+                    "content object artifact format is unsupported"
+                )
+            checked.update({"format": artifact_format, "mediaType": media_type})
+        objects.append(checked)
     objects = sorted(objects, key=lambda item: (item["digest"], item["role"]))
     if len({(item["digest"], item["role"]) for item in objects}) != len(objects):
         raise PublicSubmissionContractError("contentObjects must be unique")
@@ -299,7 +346,7 @@ def validate_submission_intent(
     if not isinstance(value, dict):
         raise PublicSubmissionContractError("submission intent has an unsupported shape")
     version = value.get("schemaVersion")
-    if version not in SUBMISSION_INTENT_SCHEMA_VERSIONS:
+    if version not in SUBMISSION_INTENT_VALIDATION_VERSIONS:
         raise PublicSubmissionContractError("submission intent schemaVersion is invalid")
     common_fields = {
         "schemaVersion",
@@ -318,13 +365,13 @@ def validate_submission_intent(
     }
     intent = _exact(
         value,
-        common_fields | ({"signature"} if version == SUBMISSION_INTENT_SCHEMA_VERSION else set()),
+        common_fields | ({"signature"} if version in _CURRENT_INTENT_VERSIONS else set()),
         "submission intent",
     )
     publisher = _exact(
         intent["publisher"],
         {"publisherId", "authorityId", "keyId"}
-        if version == SUBMISSION_INTENT_SCHEMA_VERSION
+        if version in _CURRENT_INTENT_VERSIONS
         else {"publisherId", "authorityId"},
         "submission publisher",
     )
@@ -332,23 +379,23 @@ def validate_submission_intent(
         intent["destination"],
         {
             "collectionId",
-            "audience" if version == SUBMISSION_INTENT_SCHEMA_VERSION else "visibility",
+            "audience" if version in _CURRENT_INTENT_VERSIONS else "visibility",
         },
         "submission destination",
     )
     candidate = _exact(intent["candidate"], {"title", "summary", "treatment", "capabilities"}, "submission candidate")
     rights_fields = {"license", "grantedBy", "allowedUses", "hasAuthority"}
-    if version == SUBMISSION_INTENT_SCHEMA_VERSION:
+    if version in _CURRENT_INTENT_VERSIONS:
         rights_fields.add("policyDigest")
     rights = _exact(intent["rights"], rights_fields, "submission rights")
     treatment = _text(candidate["treatment"], "submission candidate treatment", maximum=32)
-    destination_field = "audience" if version == SUBMISSION_INTENT_SCHEMA_VERSION else "visibility"
+    destination_field = "audience" if version in _CURRENT_INTENT_VERSIONS else "visibility"
     destination_value = _text(
         destination[destination_field],
         f"submission destination {destination_field}",
         maximum=20,
     )
-    allowed_destinations = AUDIENCES if version == SUBMISSION_INTENT_SCHEMA_VERSION else VISIBILITIES
+    allowed_destinations = AUDIENCES if version in _CURRENT_INTENT_VERSIONS else VISIBILITIES
     if (
         treatment not in TREATMENT_CLASSES
         or destination_value not in allowed_destinations
@@ -371,7 +418,7 @@ def validate_submission_intent(
                         pattern=_IDENTIFIER,
                     )
                 }
-                if version == SUBMISSION_INTENT_SCHEMA_VERSION
+                if version in _CURRENT_INTENT_VERSIONS
                 else {}
             ),
         },
@@ -394,7 +441,10 @@ def validate_submission_intent(
             ),
         },
         "lineage": _lineage(intent["lineage"]),
-        "contentObjects": _objects(intent["contentObjects"]),
+        "contentObjects": _objects(
+            intent["contentObjects"],
+            format_aware=version == SUBMISSION_INTENT_SCHEMA_VERSION_1_2,
+        ),
         "compatibility": _compatibility(intent["compatibility"]),
         "buildContext": build_context,
         "evidenceDigests": _sorted_texts(
@@ -422,7 +472,7 @@ def validate_submission_intent(
                         "submission rights policyDigest",
                     )
                 }
-                if version == SUBMISSION_INTENT_SCHEMA_VERSION
+                if version in _CURRENT_INTENT_VERSIONS
                 else {}
             ),
         },
@@ -434,7 +484,7 @@ def validate_submission_intent(
     if digest != sha256_json(unsigned):
         raise PublicSubmissionContractError("submission intent digest does not bind its exact content")
     signed = {**unsigned, "intentDigest": digest}
-    if version == SUBMISSION_INTENT_SCHEMA_VERSION:
+    if version in _CURRENT_INTENT_VERSIONS:
         signature = _signature(intent["signature"])
         if signature["keyId"] != unsigned["publisher"]["keyId"]:
             raise PublicSubmissionContractError("submission signature is not bound to the publisher")
@@ -450,11 +500,12 @@ def validate_submission_intent(
 def build_submission_intent(
     *,
     signer: DecisionSigningAuthority,
+    schema_version: str = SUBMISSION_INTENT_SCHEMA_VERSION,
     **fields: Any,
 ) -> dict[str, Any]:
     """Build one current, publisher-signed submission intent."""
 
-    body = {"schemaVersion": SUBMISSION_INTENT_SCHEMA_VERSION, **fields}
+    body = {"schemaVersion": schema_version, **fields}
     submitted_at = body.get("submittedAt")
     if isinstance(submitted_at, datetime) and submitted_at.tzinfo is not None:
         body["submittedAt"] = isoformat_utc(submitted_at.astimezone(UTC).replace(microsecond=0))
@@ -619,7 +670,11 @@ def build_submission_plan(
     except Exception as error:
         raise PublicSubmissionContractError("submission plan signer is unavailable") from error
     known = set(known_object_digests)
-    missing = [item for item in checked["contentObjects"] if item["digest"] not in known]
+    missing = [
+        {key: item[key] for key in ("role", "digest", "byteLength")}
+        for item in checked["contentObjects"]
+        if item["digest"] not in known
+    ]
     reasons = sorted(set(reject_reasons))
     state = "rejected" if reasons else ("needs-content" if missing else "accepted")
     if reasons:
@@ -947,11 +1002,11 @@ def validate_immutable_release(
         "immutable release",
     )
     version = release["schemaVersion"]
-    if version not in IMMUTABLE_RELEASE_SCHEMA_VERSIONS:
+    if version not in IMMUTABLE_RELEASE_VALIDATION_VERSIONS:
         raise PublicSubmissionContractError("immutable release schemaVersion is invalid")
     candidate = _exact(release["candidate"], {"title", "summary", "treatment", "capabilities"}, "release candidate")
     rights_fields = {"license", "grantedBy", "allowedUses", "hasAuthority"}
-    if version == IMMUTABLE_RELEASE_SCHEMA_VERSION:
+    if version in _CURRENT_RELEASE_VERSIONS:
         rights_fields.add("policyDigest")
     rights = _exact(release["rights"], rights_fields, "release rights")
     treatment = _text(candidate["treatment"], "release treatment", maximum=32)
@@ -976,7 +1031,10 @@ def validate_immutable_release(
             ),
         },
         "lineage": _lineage(release["lineage"]),
-        "contentObjects": _objects(release["contentObjects"]),
+        "contentObjects": _objects(
+            release["contentObjects"],
+            format_aware=version == IMMUTABLE_RELEASE_SCHEMA_VERSION_1_2,
+        ),
         "compatibility": _compatibility(release["compatibility"]),
         "buildContext": _environment(release["buildContext"], "release buildContext", version_field="version"),
         "evidenceDigests": _sorted_texts(
@@ -991,7 +1049,7 @@ def validate_immutable_release(
             "hasAuthority": True,
             **(
                 {"policyDigest": _digest(rights["policyDigest"], "release policyDigest")}
-                if version == IMMUTABLE_RELEASE_SCHEMA_VERSION
+                if version in _CURRENT_RELEASE_VERSIONS
                 else {}
             ),
         },
@@ -1075,11 +1133,11 @@ def build_immutable_release(
     )
     if checked_plan["state"] != "accepted":
         raise PublicSubmissionContractError("only a content-complete submission can become a release")
-    release_version = (
-        IMMUTABLE_RELEASE_SCHEMA_VERSION
-        if checked_intent["schemaVersion"] == SUBMISSION_INTENT_SCHEMA_VERSION
-        else IMMUTABLE_RELEASE_SCHEMA_VERSION_1_0
-    )
+    release_version = {
+        SUBMISSION_INTENT_SCHEMA_VERSION_1_0: IMMUTABLE_RELEASE_SCHEMA_VERSION_1_0,
+        SUBMISSION_INTENT_SCHEMA_VERSION_1_1: IMMUTABLE_RELEASE_SCHEMA_VERSION_1_1,
+        SUBMISSION_INTENT_SCHEMA_VERSION_1_2: IMMUTABLE_RELEASE_SCHEMA_VERSION_1_2,
+    }[checked_intent["schemaVersion"]]
     body = {
         "schemaVersion": release_version,
         "submissionIntentDigest": checked_intent["intentDigest"],

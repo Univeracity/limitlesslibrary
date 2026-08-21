@@ -64,7 +64,9 @@ in `limitless_library.service_contracts`:
   response `1.0` records;
 - outcome attempt/receipt `1.0`;
 - signed submission intent `1.1`, plan `1.0`, content-transfer grant/result
-  `1.0`, and immutable release `1.1`; and
+  `1.0`, and immutable release `1.1`; explicit experimental intent `1.2` and
+  release `1.2` construction and validation are available for conformance but
+  are not advertised or used by ordinary publication; and
 - contribution-policy acceptance, admission assessment/status, and release
   revocation `1.0` records.
 
@@ -90,6 +92,22 @@ temporary file, verifies the signed/declared/received length and digest, and
 publishes without overwrite. Receiver installation remains separate. A client
 must not infer this descriptor for older results or mix the two generations in
 one query.
+
+Experimental signed submission intent `1.2` establishes where that descriptor
+must originate. Its artifact content object binds the same closed bundle
+format, vendor media type, digest, and positive length of at most 64 MiB; the
+immutable release `1.2` preserves the descriptor byte for byte. Non-artifact
+objects retain their three-field shape, and missing-content plans intentionally
+carry only role, digest, and length so the existing transfer grant/result
+protocol does not acquire interpretation authority. The packaged static corpus
+proves intent, plan, and release signatures plus declared format, media-type,
+size, and signature mutations across implementations.
+
+This generation is validation-only. Discovery, the ordinary publication CLI,
+and the managed admission path remain on intent/release `1.1` until admission,
+projection, delivery authorization, and result `1.4` can activate together.
+Existing releases remain format-blind and must never be upgraded by sniffing or
+private source hints.
 
 Public contribution uses a separate query-free data plane. Signed discovery
 advertises its upload version and maximum object size. The client negotiates a

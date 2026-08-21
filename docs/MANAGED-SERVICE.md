@@ -179,6 +179,17 @@ store presence and reports the publisher-visible admission state. Source paths,
 private keys, bearers, and workspace contents outside the draft never enter
 the submission records.
 
+The experimental signed intent/release `1.2` contract defines the later
+format-aware publication boundary without activating it. An artifact object
+must name the exact `limitless.exact-file-bundle/1.0` format, its vendor media
+type, digest, and bounded positive byte length; the immutable release preserves
+all of those fields. Missing-content plans still project only role, digest, and
+length, keeping upload authority separate from interpretation authority. The
+ordinary CLI, signed discovery, and service admission remain on `1.1` until the
+format descriptor can move through admission, projection, delivery, and result
+`1.4` in one coordinated release. Older releases stay opaque rather than being
+retroactively classified from their bytes or provenance.
+
 The bundled example is illustrative. Publishing it requires a supported
 release with an official locator and an operating service; source builds remain
 local-only. The open client validates the public wire lifecycle but does not
