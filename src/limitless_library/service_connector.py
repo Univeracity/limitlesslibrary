@@ -23,6 +23,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from tempfile import mkstemp
 from typing import Any, BinaryIO, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -76,6 +77,7 @@ from .service_contracts import (
     SERVICE_CONTENT_UPLOAD_SCHEMA_VERSION,
     SERVICE_PROTOCOL_VERSION,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION,
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
     SERVICE_QUERY_RESULT_SCHEMA_VERSIONS,
     SERVICE_QUERY_SCHEMA_VERSION,
     active_result_keys,
@@ -94,9 +96,10 @@ _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9._:-]{0,199}$")
 _TOKEN = re.compile(r"^[\x21-\x7e]{16,4096}$")
 _JSON_CONTENT_TYPE = re.compile(r"^application/json(?:\s*;\s*charset=(?:utf-8|UTF-8))?$")
-_CONTENT_LENGTH = re.compile(r"^(?:0|[1-9][0-9]{0,6})$")
+_CONTENT_LENGTH = re.compile(r"^(?:0|[1-9][0-9]{0,9})$")
 _ARTIFACT_CONTENT_TYPE = "application/octet-stream"
 MAX_REMOTE_ARTIFACT_BYTES = 128 * 1024
+MAX_REMOTE_STREAMED_ARTIFACT_BYTES = 64 * 1024 * 1024
 MAX_PUBLICATION_STATUS_BYTES = 4 * 1024
 
 
@@ -115,6 +118,14 @@ class ServiceHttpResponse:
     body: bytes
 
 
+@dataclass(frozen=True)
+class ServiceStreamResponse:
+    status: int
+    headers: Mapping[str, str]
+    byte_length: int
+    content_digest: str
+
+
 class ServiceTransport(Protocol):
     def request(
         self,
@@ -126,6 +137,16 @@ class ServiceTransport(Protocol):
         maximum_bytes: int,
         timeout_seconds: float,
     ) -> ServiceHttpResponse: ...
+
+    def download_file(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        destination: BinaryIO,
+        maximum_bytes: int,
+        timeout_seconds: float,
+    ) -> ServiceStreamResponse: ...
 
     def upload_file(
         self,
@@ -487,6 +508,92 @@ class UrllibServiceTransport:
                 response.close()
             connection.close()
 
+    def download_file(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        destination: BinaryIO,
+        maximum_bytes: int,
+        timeout_seconds: float,
+    ) -> ServiceStreamResponse:
+        """Stream one bounded HTTPS response into an unpublished receiver file."""
+
+        _request_url(url)
+        if (
+            not callable(getattr(destination, "write", None))
+            or isinstance(maximum_bytes, bool)
+            or not isinstance(maximum_bytes, int)
+            or not 1 <= maximum_bytes <= MAX_REMOTE_STREAMED_ARTIFACT_BYTES
+            or timeout_seconds <= 0
+            or timeout_seconds > 300
+        ):
+            raise ServiceConnectorError("service download limits are invalid")
+        request = Request(url, data=None, headers=dict(headers), method="GET")
+        try:
+            response = self._opener.open(request, timeout=timeout_seconds)  # nosec B310
+        except HTTPError as error:
+            response = error
+        except (OSError, TimeoutError, URLError) as error:
+            raise ServiceUnavailableError("managed service is unavailable; continue locally") from error
+        try:
+            status = int(response.status)
+            response_headers: dict[str, str] = {}
+            for key in response.headers:
+                normalized_key = str(key).lower()
+                values = response.headers.get_all(key, [])
+                if len(values) != 1 or normalized_key in response_headers:
+                    raise ServiceConnectorError("duplicate service response header is invalid")
+                response_headers[normalized_key] = str(values[0])
+            encoding = response_headers.get("content-encoding")
+            if encoding not in {None, "identity"}:
+                raise ServiceConnectorError("compressed service responses are refused")
+            declared = response_headers.get("content-length")
+            if declared is not None:
+                try:
+                    length = int(declared)
+                except ValueError as error:
+                    raise ServiceConnectorError("service content length is invalid") from error
+                if length < 0 or length > maximum_bytes:
+                    raise ServiceConnectorError("service response exceeds its byte limit")
+            if status != 200:
+                return ServiceStreamResponse(
+                    status=status,
+                    headers=response_headers,
+                    byte_length=0,
+                    content_digest="sha256:" + sha256(b"").hexdigest(),
+                )
+            hasher = sha256()
+            total = 0
+            while True:
+                chunk = response.read(128 * 1024)
+                if not isinstance(chunk, bytes) or len(chunk) > 128 * 1024:
+                    raise ServiceConnectorError("service download response is invalid")
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > maximum_bytes:
+                    raise ServiceConnectorError("service response exceeds its byte limit")
+                try:
+                    written = destination.write(chunk)
+                except OSError as error:
+                    raise ServiceConnectorError(
+                        "service download destination write failed"
+                    ) from error
+                if written != len(chunk):
+                    raise ServiceConnectorError("service download destination write differs")
+                hasher.update(chunk)
+            return ServiceStreamResponse(
+                status=status,
+                headers=response_headers,
+                byte_length=total,
+                content_digest="sha256:" + hasher.hexdigest(),
+            )
+        except (OSError, TimeoutError, http.client.HTTPException) as error:
+            raise ServiceUnavailableError("managed service is unavailable; continue locally") from error
+        finally:
+            response.close()
+
 
 @dataclass(frozen=True)
 class VerifiedService:
@@ -778,12 +885,107 @@ class ServiceConnector:
 
     def _result_matches_profile(self, checked_result: dict[str, Any]) -> bool:
         return (
-            checked_result["schemaVersion"] == SERVICE_QUERY_RESULT_SCHEMA_VERSION
+            checked_result["schemaVersion"]
+            in {SERVICE_QUERY_RESULT_SCHEMA_VERSION, SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4}
             and checked_result["policy"]["policyDigest"] == self.profile.accepted_policy_digest
             and checked_result["policy"]["executionMode"] == self.profile.execution_mode
             and checked_result["policy"]["historyMode"] == self.profile.history_mode
             and set(checked_result["authorizedAudiences"]).issubset(set(self.profile.requested_audiences))
         )
+
+    def _stream_checked_artifact(
+        self,
+        *,
+        checked_result: dict[str, Any],
+        selection: dict[str, Any],
+        immutable: dict[str, Any],
+        authorization: dict[str, Any],
+        destination: str | Path,
+    ) -> dict[str, Any]:
+        download = getattr(self._transport, "download_file", None)
+        if not callable(download):
+            raise ServiceConnectorError("configured service transport cannot stream downloads")
+        if not isinstance(destination, (str, Path)):
+            raise ServiceConnectorError("service artifact destination is invalid")
+        path = Path(destination)
+        if not path.name:
+            raise ServiceConnectorError("service artifact destination is invalid")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.exists() or path.is_symlink():
+                raise FileExistsError(path)
+            descriptor, temporary_name = mkstemp(
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                dir=path.parent,
+            )
+        except (OSError, ValueError) as error:
+            raise ServiceConnectorError("service artifact could not be staged without overwrite") from error
+        temporary = Path(temporary_name)
+        try:
+            os.fchmod(descriptor, 0o600)
+            with os.fdopen(descriptor, "wb") as handle:
+                descriptor = -1
+                response = download(
+                    _request_url(immutable["uri"]),
+                    headers={
+                        "accept": immutable["mediaType"],
+                        "authorization": f"Bearer {self.profile.access_token}",
+                        "user-agent": "limitless-library/0.1.0a0",
+                        authorization["header"]: authorization["value"],
+                    },
+                    destination=handle,
+                    maximum_bytes=MAX_REMOTE_STREAMED_ARTIFACT_BYTES,
+                    timeout_seconds=self._timeout_seconds,
+                )
+                if not isinstance(response, ServiceStreamResponse):
+                    raise ServiceConnectorError("service artifact stream response is invalid")
+                if response.status in {401, 403}:
+                    raise ServiceConnectorError("managed service artifact authorization failed")
+                if response.status in {429, 500, 502, 503, 504}:
+                    raise ServiceUnavailableError("managed service is unavailable; continue locally")
+                if response.status != 200:
+                    raise ServiceConnectorError("managed service rejected the artifact request")
+                headers = self._response_headers(response.headers)
+                if headers.get("content-type") != immutable["mediaType"]:
+                    raise ServiceConnectorError("service artifact content type is invalid")
+                declared = headers.get("content-length")
+                if declared is None or _CONTENT_LENGTH.fullmatch(declared) is None:
+                    raise ServiceConnectorError("service artifact content length is invalid")
+                declared_length = int(declared)
+                if declared_length != immutable["byteLength"] or response.byte_length != immutable["byteLength"]:
+                    raise ServiceConnectorError("service artifact content length differs")
+                expected_digest = immutable["digest"]
+                if headers.get("x-limitless-artifact-digest") != expected_digest:
+                    raise ServiceConnectorError("service artifact digest header differs")
+                if response.content_digest != expected_digest:
+                    raise ServiceConnectorError("service artifact bytes differ from the signed result")
+                handle.flush()
+                os.fsync(handle.fileno())
+            try:
+                os.link(temporary, path)
+            except FileExistsError as error:
+                raise ServiceConnectorError("service artifact could not be staged without overwrite") from error
+        except ServiceConnectorError:
+            raise
+        except (OSError, ValueError) as error:
+            raise ServiceConnectorError("service artifact could not be staged without overwrite") from error
+        finally:
+            if descriptor != -1:
+                os.close(descriptor)
+            temporary.unlink(missing_ok=True)
+        return {
+            "schemaVersion": "limitless.staged-service-artifact/1.1",
+            "decisionRef": checked_result["decisionRef"],
+            "capabilityId": selection["capabilityId"],
+            "revision": immutable["revision"],
+            "digest": immutable["digest"],
+            "byteLength": immutable["byteLength"],
+            "mediaType": immutable["mediaType"],
+            "format": immutable["format"],
+            "path": str(path),
+            "nextAction": checked_result["nextAction"],
+        }
 
     def _fetch_checked_artifact(
         self,
@@ -802,6 +1004,14 @@ class ServiceConnector:
         authorization = immutable.get("authorization")
         if not isinstance(authorization, dict):
             raise ServiceConnectorError("service artifact authorization is unavailable")
+        if checked_result["schemaVersion"] == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4:
+            return self._stream_checked_artifact(
+                checked_result=checked_result,
+                selection=selection,
+                immutable=immutable,
+                authorization=authorization,
+                destination=destination,
+            )
 
         response = self._transport.request(
             "GET",

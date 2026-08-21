@@ -134,8 +134,12 @@ An explicit experimental `limitless.service-query-result/1.4` contract binds
 that format, its vendor media type, and a positive byte length into the signed
 artifact descriptor. It is available for cross-implementation conformance but
 is intentionally absent from advertised discovery and default client queries.
-It does not enter the current buffered fetch path; activation waits for bounded
-streaming delivery and a reviewed local receiver adapter.
+When an explicit 1.4 query/result is supplied, the connector streams no more
+than 64 MiB into a mode-0600 temporary file, hashes and counts bounded chunks,
+requires the response headers and signed descriptor to agree, and publishes by
+no-replace hard link only after verification. Interrupted or mismatched streams
+leave no destination. Activation still waits for a reviewed local receiver
+adapter and a coordinated service/client release.
 
 ## Explicit anonymous publication
 

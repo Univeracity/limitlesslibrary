@@ -84,9 +84,12 @@ events.
 
 Experimental result `1.4` additionally binds an exact positive byte length and
 the closed `limitless.exact-file-bundle/1.0` format/media-type pair inside the
-signed selection. Current discovery, ordinary queries, artifact fetching, and
-receiver installation remain on `1.3`; a client must not infer this descriptor
-for older results or mix the two generations in one query.
+signed selection. Current discovery and ordinary queries remain on `1.3`; an
+explicit 1.4 continuation streams at most 64 MiB into an unpublished owner-only
+temporary file, verifies the signed/declared/received length and digest, and
+publishes without overwrite. Receiver installation remains separate. A client
+must not infer this descriptor for older results or mix the two generations in
+one query.
 
 Public contribution uses a separate query-free data plane. Signed discovery
 advertises its upload version and maximum object size. The client negotiates a

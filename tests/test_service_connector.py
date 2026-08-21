@@ -4,6 +4,7 @@ from base64 import urlsafe_b64decode
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from email.message import Message
+from hashlib import sha256
 from importlib.resources import files
 from io import BytesIO
 from pathlib import Path
@@ -18,6 +19,7 @@ from limitless_library.contracts import (
     sha256_json,
     strict_json_loads,
 )
+from limitless_library.exact_file_bundle import build_exact_file_bundle
 from limitless_library.public_admission_contracts import build_contribution_policy_acceptance
 from limitless_library.public_submission_contracts import (
     build_content_transfer_grant,
@@ -26,16 +28,20 @@ from limitless_library.public_submission_contracts import (
 )
 from limitless_library.service_connector import (
     MAX_REMOTE_ARTIFACT_BYTES,
+    MAX_REMOTE_STREAMED_ARTIFACT_BYTES,
     ServiceConnector,
     ServiceConnectorError,
     ServiceHttpResponse,
     ServiceProfile,
+    ServiceStreamResponse,
     ServiceUnavailableError,
     UrllibServiceTransport,
     VerifiedService,
 )
 from limitless_library.service_contracts import (
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
     build_service_discovery,
+    build_service_query,
     build_service_query_result,
     validate_service_root_key_transition_set,
 )
@@ -142,6 +148,54 @@ class ArtifactTransport:
             status=self.status,
             headers=self.headers,
             body=self.body,
+        )
+
+
+class StreamingArtifactTransport:
+    def __init__(self, uri: str, body: bytes, digest: str) -> None:
+        self.uri = uri
+        self.body = body
+        self.status = 200
+        self.headers = {
+            "content-type": "application/vnd.limitless.exact-file-bundle+json",
+            "content-length": str(len(body)),
+            "x-limitless-artifact-digest": digest,
+        }
+        self.fail_after_first_chunk = False
+        self.calls: list[dict[str, Any]] = []
+
+    def download_file(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        destination: Any,
+        maximum_bytes: int,
+        timeout_seconds: float,
+    ) -> ServiceStreamResponse:
+        assert url == self.uri
+        self.calls.append(
+            {
+                "url": url,
+                "headers": dict(headers),
+                "maximumBytes": maximum_bytes,
+                "timeoutSeconds": timeout_seconds,
+            }
+        )
+        total = 0
+        digest = sha256()
+        for offset in range(0, len(self.body), 128 * 1024):
+            chunk = self.body[offset : offset + 128 * 1024]
+            destination.write(chunk)
+            total += len(chunk)
+            digest.update(chunk)
+            if self.fail_after_first_chunk:
+                raise ServiceUnavailableError("managed service is unavailable; continue locally")
+        return ServiceStreamResponse(
+            status=self.status,
+            headers=self.headers,
+            byte_length=total,
+            content_digest="sha256:" + digest.hexdigest(),
         )
 
 
@@ -269,9 +323,14 @@ class StaticResponse:
         self.headers = headers
         self.body = body
         self.closed = False
+        self.offset = 0
+        self.read_sizes: list[int] = []
 
     def read(self, maximum_bytes: int) -> bytes:
-        return self.body[:maximum_bytes]
+        self.read_sizes.append(maximum_bytes)
+        value = self.body[self.offset : self.offset + maximum_bytes]
+        self.offset += len(value)
+        return value
 
     def close(self) -> None:
         self.closed = True
@@ -398,6 +457,77 @@ def _artifact_fixture(
     )
     connector._cached_until = float("inf")
     return connector, transport, corpus["query"], result, artifact, tmp_path / "selected.bin"
+
+
+def _streaming_artifact_fixture(
+    tmp_path: Path,
+) -> tuple[
+    ServiceConnector,
+    StreamingArtifactTransport,
+    dict[str, Any],
+    dict[str, Any],
+    bytes,
+    Path,
+]:
+    corpus = load_json(CORPUS)
+    artifact = build_exact_file_bundle({"payload.bin": b"x" * (300 * 1024)})
+    digest = sha256_bytes(artifact)
+    uri = "https://objects.limitlesslibrary.com/v1/public/deliveries/public-delivery-grant:sha256:" + "8" * 64
+    query = build_service_query(
+        request_id="request:artifact-streaming-test-001",
+        objective=corpus["query"]["objective"],
+        receiver_context=corpus["query"]["receiverContext"],
+        requested_audiences=corpus["query"]["requestedAudiences"],
+        requested_treatments=["exact-component"],
+        execution_mode="service",
+        history_mode="local-only",
+        client_name="limitless-library-streaming-test",
+        client_version="0.1.0",
+        issued_at=AT.replace(second=0),
+        supported_result_version=SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
+    )
+    selection = deepcopy(corpus["result"]["selection"])
+    selection["immutable"] = {
+        **selection["immutable"],
+        "uri": uri,
+        "digest": digest,
+        "byteLength": len(artifact),
+        "mediaType": "application/vnd.limitless.exact-file-bundle+json",
+        "format": "limitless.exact-file-bundle/1.0",
+    }
+    signer = InstallationSigner.generate()
+    result = build_service_query_result(
+        query=query,
+        decision_ref="decision:artifact-streaming-test-001",
+        authorized_scopes=corpus["result"]["authorizedAudiences"],
+        policy_digest=corpus["discovery"]["dataUsePolicy"]["digest"],
+        treatment="exact-component",
+        selection=selection,
+        next_action=corpus["result"]["nextAction"],
+        index_generation=13,
+        issued_at=AT.replace(second=0),
+        signer=signer,
+        ttl_seconds=120,
+    )
+    transport = StreamingArtifactTransport(uri, artifact, digest)
+    connector = ServiceConnector(
+        _profile(corpus, token="test-access-token-value"),
+        transport=transport,
+        clock=lambda: AT,
+    )
+    connector._cached = VerifiedService(
+        discovery=corpus["discovery"],
+        root_transitions={
+            "schemaVersion": "limitless.service-root-key-transition-set/1.0",
+            "serviceId": corpus["discovery"]["serviceId"],
+            "transitions": [],
+            "latestSequence": 0,
+            "latestTransitionDigest": None,
+        },
+        result_keys={signer.key_id: signer.public_bytes()},
+    )
+    connector._cached_until = float("inf")
+    return connector, transport, query, result, artifact, tmp_path / "streamed.bin"
 
 
 def test_opted_in_query_verifies_discovery_request_and_signed_result() -> None:
@@ -717,6 +847,33 @@ def test_default_transport_preserves_a_bounded_octet_stream_for_artifact_validat
     assert response.closed is True
 
 
+def test_default_transport_streams_download_in_bounded_chunks() -> None:
+    body = b"x" * (300 * 1024)
+    digest = sha256_bytes(body)
+    headers = Message()
+    headers["content-type"] = "application/vnd.limitless.exact-file-bundle+json"
+    headers["content-length"] = str(len(body))
+    headers["x-limitless-artifact-digest"] = digest
+    response = StaticResponse(200, headers, body)
+    transport = UrllibServiceTransport()
+    transport._opener = StaticOpener(response)
+    destination = BytesIO()
+
+    result = transport.download_file(
+        "https://objects.example/v1/delivery/example",
+        headers={"accept": "application/vnd.limitless.exact-file-bundle+json"},
+        destination=destination,
+        maximum_bytes=MAX_REMOTE_STREAMED_ARTIFACT_BYTES,
+        timeout_seconds=5,
+    )
+
+    assert destination.getvalue() == body
+    assert result.byte_length == len(body)
+    assert result.content_digest == digest
+    assert max(response.read_sizes) == 128 * 1024
+    assert response.closed is True
+
+
 def test_default_transport_streams_upload_and_rehashes_while_sending(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -799,6 +956,92 @@ def test_signed_artifact_is_fetched_with_header_authority_and_staged_without_sec
     public_output = canonical_json_bytes(staged).decode("utf-8")
     assert "test-access-token-value" not in public_output
     assert result["selection"]["immutable"]["authorization"]["value"] not in public_output
+
+
+def test_result_1_4_streams_large_exact_bundle_to_no_replace_staging(tmp_path: Path) -> None:
+    connector, transport, query, result, artifact, destination = _streaming_artifact_fixture(tmp_path)
+
+    staged = connector.fetch_selected_artifact(
+        query=query,
+        result=result,
+        destination=destination,
+    )
+
+    assert len(artifact) > MAX_REMOTE_ARTIFACT_BYTES
+    assert destination.read_bytes() == artifact
+    assert destination.stat().st_mode & 0o777 == 0o600
+    assert staged["schemaVersion"] == "limitless.staged-service-artifact/1.1"
+    assert staged["format"] == "limitless.exact-file-bundle/1.0"
+    assert staged["byteLength"] == len(artifact)
+    assert transport.calls[0]["maximumBytes"] == MAX_REMOTE_STREAMED_ARTIFACT_BYTES
+    assert transport.calls[0]["headers"]["accept"] == staged["mediaType"]
+    public_output = canonical_json_bytes(staged).decode("utf-8")
+    assert "test-access-token-value" not in public_output
+    assert result["selection"]["immutable"]["authorization"]["value"] not in public_output
+
+
+@pytest.mark.parametrize(
+    ("header", "value", "message"),
+    [
+        ("content-type", "application/octet-stream", "content type"),
+        ("content-length", "1", "content length"),
+        ("x-limitless-artifact-digest", "sha256:" + "0" * 64, "digest header"),
+    ],
+)
+def test_result_1_4_stream_metadata_drift_never_publishes(
+    tmp_path: Path,
+    header: str,
+    value: str,
+    message: str,
+) -> None:
+    connector, transport, query, result, _artifact, destination = _streaming_artifact_fixture(tmp_path)
+    transport.headers[header] = value
+
+    with pytest.raises(ServiceConnectorError, match=message):
+        connector.fetch_selected_artifact(query=query, result=result, destination=destination)
+
+    assert not destination.exists()
+    assert list(tmp_path.glob(".streamed.bin.*.tmp")) == []
+
+
+@pytest.mark.parametrize("change", ["short", "long", "digest"])
+def test_result_1_4_stream_body_drift_never_publishes(
+    tmp_path: Path,
+    change: str,
+) -> None:
+    connector, transport, query, result, artifact, destination = _streaming_artifact_fixture(tmp_path)
+    if change == "short":
+        transport.body = artifact[:-1]
+    elif change == "long":
+        transport.body = artifact + b"x"
+    else:
+        changed = bytearray(artifact)
+        changed[-1] ^= 1
+        transport.body = bytes(changed)
+
+    with pytest.raises(ServiceConnectorError, match="length differs|bytes differ"):
+        connector.fetch_selected_artifact(query=query, result=result, destination=destination)
+
+    assert not destination.exists()
+    assert list(tmp_path.glob(".streamed.bin.*.tmp")) == []
+
+
+def test_result_1_4_stream_failure_and_collision_preserve_receiver_state(
+    tmp_path: Path,
+) -> None:
+    connector, transport, query, result, _artifact, destination = _streaming_artifact_fixture(tmp_path)
+    transport.fail_after_first_chunk = True
+    with pytest.raises(ServiceUnavailableError):
+        connector.fetch_selected_artifact(query=query, result=result, destination=destination)
+    assert not destination.exists()
+    assert list(tmp_path.glob(".streamed.bin.*.tmp")) == []
+
+    connector, transport, query, result, _artifact, destination = _streaming_artifact_fixture(tmp_path)
+    destination.write_bytes(b"receiver-owned")
+    with pytest.raises(ServiceConnectorError, match="without overwrite"):
+        connector.fetch_selected_artifact(query=query, result=result, destination=destination)
+    assert destination.read_bytes() == b"receiver-owned"
+    assert transport.calls == []
 
 
 def test_locally_bound_continuation_stages_without_retaining_query_text(tmp_path: Path) -> None:
