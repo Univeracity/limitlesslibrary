@@ -75,6 +75,7 @@ from .service_contracts import (
     MAX_ROOT_KEY_TRANSITION_SET_BYTES,
     SERVICE_CONTENT_UPLOAD_SCHEMA_VERSION,
     SERVICE_PROTOCOL_VERSION,
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION,
     SERVICE_QUERY_RESULT_SCHEMA_VERSIONS,
     SERVICE_QUERY_SCHEMA_VERSION,
     active_result_keys,
@@ -763,7 +764,7 @@ class ServiceConnector:
             authenticated=True,
         )
         try:
-            return validate_service_query_result(
+            checked_result = validate_service_query_result(
                 result_value,
                 public_keys=verified.result_keys,
                 expected_query=checked_query,
@@ -771,34 +772,25 @@ class ServiceConnector:
             )
         except ValueError as error:
             raise ServiceConnectorError("service query result is invalid") from error
+        if not self._result_matches_profile(checked_result):
+            raise ServiceConnectorError("service query result exceeds the opted-in profile")
+        return checked_result
 
-    def fetch_selected_artifact(
+    def _result_matches_profile(self, checked_result: dict[str, Any]) -> bool:
+        return (
+            checked_result["schemaVersion"] == SERVICE_QUERY_RESULT_SCHEMA_VERSION
+            and checked_result["policy"]["policyDigest"] == self.profile.accepted_policy_digest
+            and checked_result["policy"]["executionMode"] == self.profile.execution_mode
+            and checked_result["policy"]["historyMode"] == self.profile.history_mode
+            and set(checked_result["authorizedAudiences"]).issubset(set(self.profile.requested_audiences))
+        )
+
+    def _fetch_checked_artifact(
         self,
         *,
-        query: dict[str, Any],
-        result: dict[str, Any],
+        checked_result: dict[str, Any],
         destination: str | Path,
     ) -> dict[str, Any]:
-        """Fetch one signed exact artifact into a new receiver-owned file."""
-
-        verified = self.inspect()
-        now = self._now()
-        try:
-            checked_query = validate_service_query(query, at=now)
-            checked_result = validate_service_query_result(
-                result,
-                public_keys=verified.result_keys,
-                expected_query=checked_query,
-                at=now,
-            )
-        except ValueError as error:
-            raise ServiceConnectorError("service artifact authority is invalid") from error
-        if (
-            service_query_execution_mode(checked_query) != self.profile.execution_mode
-            or service_query_history_mode(checked_query) != self.profile.history_mode
-            or not set(service_query_audiences(checked_query)).issubset(set(self.profile.requested_audiences))
-        ):
-            raise ServiceConnectorError("service query exceeds the opted-in profile")
         if self.profile.access_token is None:
             raise ServiceConnectorError("managed service authorization is required")
         if checked_result["treatment"] != "exact-component":
@@ -863,6 +855,71 @@ class ServiceConnector:
             "path": str(path),
             "nextAction": checked_result["nextAction"],
         }
+
+    def fetch_selected_artifact(
+        self,
+        *,
+        query: dict[str, Any],
+        result: dict[str, Any],
+        destination: str | Path,
+    ) -> dict[str, Any]:
+        """Fetch one signed exact artifact into a new receiver-owned file."""
+
+        verified = self.inspect()
+        now = self._now()
+        try:
+            checked_query = validate_service_query(query, at=now)
+            checked_result = validate_service_query_result(
+                result,
+                public_keys=verified.result_keys,
+                expected_query=checked_query,
+                at=now,
+            )
+        except ValueError as error:
+            raise ServiceConnectorError("service artifact authority is invalid") from error
+        if (
+            service_query_execution_mode(checked_query) != self.profile.execution_mode
+            or service_query_history_mode(checked_query) != self.profile.history_mode
+            or not set(service_query_audiences(checked_query)).issubset(set(self.profile.requested_audiences))
+        ):
+            raise ServiceConnectorError("service query exceeds the opted-in profile")
+        if not self._result_matches_profile(checked_result):
+            raise ServiceConnectorError("service artifact authority exceeds the opted-in profile")
+        return self._fetch_checked_artifact(
+            checked_result=checked_result,
+            destination=destination,
+        )
+
+    def fetch_selected_artifact_continuation(
+        self,
+        *,
+        result: dict[str, Any],
+        expected_request_digest: str,
+        destination: str | Path,
+    ) -> dict[str, Any]:
+        """Continue a locally bound, previously verified query without retaining its text."""
+
+        verified = self.inspect()
+        now = self._now()
+        try:
+            checked_result = validate_service_query_result(
+                result,
+                public_keys=verified.result_keys,
+                at=now,
+            )
+        except ValueError as error:
+            raise ServiceConnectorError("service artifact authority is invalid") from error
+        if (
+            not isinstance(expected_request_digest, str)
+            or _DIGEST.fullmatch(expected_request_digest) is None
+            or checked_result["requestDigest"] != expected_request_digest
+            or not self._result_matches_profile(checked_result)
+        ):
+            raise ServiceConnectorError("service artifact continuation is unbound")
+        return self._fetch_checked_artifact(
+            checked_result=checked_result,
+            destination=destination,
+        )
 
     def accept_publication_policy(
         self,

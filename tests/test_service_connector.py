@@ -353,6 +353,7 @@ def _artifact_fixture(
     tmp_path: Path,
     *,
     token: str | None = "test-access-token-value",
+    result_policy_digest: str | None = None,
 ) -> tuple[ServiceConnector, ArtifactTransport, dict[str, Any], dict[str, Any], bytes, Path]:
     corpus = load_json(CORPUS)
     artifact = b'{"schemaVersion":"example.bundle/1.0","files":[]}\n'
@@ -369,7 +370,7 @@ def _artifact_fixture(
         query=corpus["query"],
         decision_ref="decision:artifact-staging-test-001",
         authorized_scopes=corpus["result"]["authorizedAudiences"],
-        policy_digest=corpus["discovery"]["dataUsePolicy"]["digest"],
+        policy_digest=result_policy_digest or corpus["discovery"]["dataUsePolicy"]["digest"],
         treatment="exact-component",
         selection=selection,
         next_action=corpus["result"]["nextAction"],
@@ -456,6 +457,46 @@ def test_policy_endpoint_and_scope_cannot_silently_drift() -> None:
     broader["requestedAudiences"] = ["private", "public"]
     with pytest.raises(ServiceConnectorError, match="query"):
         valid.query(broader)
+
+
+def test_signed_query_result_cannot_substitute_the_accepted_policy() -> None:
+    corpus = load_json(CORPUS)
+    signer = InstallationSigner.generate()
+    result = build_service_query_result(
+        query=corpus["query"],
+        decision_ref="decision:substituted-policy-test-001",
+        authorized_scopes=corpus["result"]["authorizedAudiences"],
+        policy_digest="sha256:" + "8" * 64,
+        treatment=corpus["result"]["treatment"],
+        selection=corpus["result"]["selection"],
+        next_action=corpus["result"]["nextAction"],
+        index_generation=12,
+        issued_at=AT.replace(second=0),
+        signer=signer,
+        ttl_seconds=120,
+    )
+    transport = MemoryTransport(corpus)
+    transport.result = result
+    connector = ServiceConnector(
+        _profile(corpus, token="test-access-token-value"),
+        transport=transport,
+        clock=lambda: AT,
+    )
+    connector._cached = VerifiedService(
+        discovery=corpus["discovery"],
+        root_transitions={
+            "schemaVersion": "limitless.service-root-key-transition-set/1.0",
+            "serviceId": corpus["discovery"]["serviceId"],
+            "transitions": [],
+            "latestSequence": 0,
+            "latestTransitionDigest": None,
+        },
+        result_keys={signer.key_id: signer.public_bytes()},
+    )
+    connector._cached_until = float("inf")
+
+    with pytest.raises(ServiceConnectorError, match="opted-in profile"):
+        connector.query(corpus["query"])
 
 
 def test_remote_unavailability_explicitly_returns_control_to_local_reuse() -> None:
@@ -758,6 +799,49 @@ def test_signed_artifact_is_fetched_with_header_authority_and_staged_without_sec
     public_output = canonical_json_bytes(staged).decode("utf-8")
     assert "test-access-token-value" not in public_output
     assert result["selection"]["immutable"]["authorization"]["value"] not in public_output
+
+
+def test_locally_bound_continuation_stages_without_retaining_query_text(tmp_path: Path) -> None:
+    connector, transport, query, result, artifact, _destination = _artifact_fixture(tmp_path)
+    destination = tmp_path / "continued.bin"
+
+    staged = connector.fetch_selected_artifact_continuation(
+        result=result,
+        expected_request_digest=query["queryDigest"],
+        destination=destination,
+    )
+
+    assert destination.read_bytes() == artifact
+    assert staged["decisionRef"] == result["decisionRef"]
+    assert len(transport.calls) == 1
+
+
+def test_artifact_continuation_rejects_request_or_profile_substitution(tmp_path: Path) -> None:
+    connector, transport, _query, result, _artifact, destination = _artifact_fixture(tmp_path)
+
+    with pytest.raises(ServiceConnectorError, match="continuation is unbound"):
+        connector.fetch_selected_artifact_continuation(
+            result=result,
+            expected_request_digest="sha256:" + "9" * 64,
+            destination=destination,
+        )
+
+    assert transport.calls == []
+    assert not destination.exists()
+
+    connector, transport, query, result, _artifact, destination = _artifact_fixture(
+        tmp_path,
+        result_policy_digest="sha256:" + "8" * 64,
+    )
+    with pytest.raises(ServiceConnectorError, match="continuation is unbound"):
+        connector.fetch_selected_artifact_continuation(
+            result=result,
+            expected_request_digest=query["queryDigest"],
+            destination=destination,
+        )
+
+    assert transport.calls == []
+    assert not destination.exists()
 
 
 @pytest.mark.parametrize(

@@ -110,6 +110,16 @@ signed `nextAction`, install under its own rules, verify locally, observe use,
 and decide whether to submit outcome evidence. A failed integrity check can
 consume the one-use capability but never publishes bytes to the destination.
 
+A receiver adapter that must continue after the query process exits without
+retaining objective text may keep the already verified signed result and its
+request digest in receiver-owned protected state, then call
+`fetch_selected_artifact_continuation(...)`. That continuation accepts only the
+current result contract, re-verifies the service signature and lifetime, binds
+the exact request digest and opted-in policy/audiences, and still stages with
+no overwrite. The generic Library does not create that local state or infer a
+receiver installation from it; custody and native handling belong to the
+explicit receiver adapter.
+
 ## Explicit anonymous publication
 
 The same service-specific installation key can sign a public contribution
