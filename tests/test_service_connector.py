@@ -199,23 +199,27 @@ def test_profile_json_is_exact_and_never_serializes_the_access_token() -> None:
     discovery = corpus["discovery"]
     profile = ServiceProfile.from_json(
         {
-            "schemaVersion": "limitless.service-profile/1.0",
+            "schemaVersion": "limitless.service-profile/1.1",
             "apiBaseUrl": discovery["apiBaseUrl"],
             "serviceId": discovery["serviceId"],
             "rootKey": root,
             "acceptedPolicyDigest": discovery["dataUsePolicy"]["digest"],
-            "dataUseMode": "confidential",
-            "requestedScopes": ["public"],
+            "executionMode": "service",
+            "defaultAudience": "private",
+            "historyMode": "local-only",
+            "requestedAudiences": ["public"],
         },
         access_token="test-access-token-value",
     )
 
     summary = profile.public_summary()
-    assert summary["dataUseMode"] == "confidential"
+    assert summary["defaultAudience"] == "private"
+    assert summary["historyMode"] == "local-only"
+    assert summary["requestedAudiences"] == ["public"]
     assert summary["rootKeyFingerprint"].startswith("sha256:")
     assert "access" not in "".join(summary).lower()
 
-    invalid = {**summary, "schemaVersion": "limitless.service-profile/1.0"}
+    invalid = {**summary, "schemaVersion": "limitless.service-profile/1.1"}
     with pytest.raises(ValueError, match="shape"):
         ServiceProfile.from_json(invalid)
 

@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .contracts import ContractError
 
-DATA_USE_MODES = ("standard", "history", "organization", "confidential")
+DATA_USE_MODES = ("standard", "history", "organization", "private")
 QUERY_SCOPES = ("public", "organization", "exchange", "private")
 TREATMENT_CLASSES = ("exact-component", "source-free-method")
 

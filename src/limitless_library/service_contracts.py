@@ -55,6 +55,13 @@ SERVICE_OUTCOME_ATTEMPT_SCHEMA_VERSION = "limitless.service-outcome-attempt/1.0"
 SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION = "limitless.service-outcome-receipt/1.0"
 SERVICE_ROOT_KEY_TRANSITION_SCHEMA_VERSION = "limitless.service-root-key-transition/1.0"
 SERVICE_ROOT_KEY_TRANSITION_SET_SCHEMA_VERSION = "limitless.service-root-key-transition-set/1.0"
+SERVICE_PROFILE_SCHEMA_VERSION_1_0 = "limitless.service-profile/1.0"
+SERVICE_PROFILE_SCHEMA_VERSION = "limitless.service-profile/1.1"
+SERVICE_PROFILE_SCHEMA_VERSIONS = (
+    SERVICE_PROFILE_SCHEMA_VERSION_1_0,
+    SERVICE_PROFILE_SCHEMA_VERSION,
+)
+OFFICIAL_SERVICE_LOCATOR_SCHEMA_VERSION = "limitless.official-service-locator/1.0"
 SERVICE_PROTOCOL_VERSION = "limitless.service/1.0"
 SIGNATURE_ALGORITHM = "ed25519"
 
@@ -65,6 +72,8 @@ MAX_OUTCOME_RECEIPT_BYTES = 8 * 1024
 MAX_DISCOVERY_BYTES = 32 * 1024
 MAX_ROOT_KEY_TRANSITION_BYTES = 8 * 1024
 MAX_ROOT_KEY_TRANSITION_SET_BYTES = 32 * 1024
+MAX_SERVICE_PROFILE_BYTES = 8 * 1024
+MAX_OFFICIAL_SERVICE_LOCATOR_BYTES = 4 * 1024
 MAX_QUERY_TTL = timedelta(minutes=5)
 MAX_RESULT_TTL = timedelta(minutes=5)
 MAX_DISCOVERY_TTL = timedelta(days=7)
@@ -88,6 +97,9 @@ _OUTCOME = re.compile(r"^outcome:[0-9a-f]{32}$")
 _UNSET = object()
 
 OUTCOME_STATUSES = frozenset({"verified", "failed", "abstained-in-use"})
+EXECUTION_MODES = ("local", "service")
+PUBLIC_AUDIENCES = ("private", "circle", "organization", "public")
+HISTORY_MODES = ("local-only", "service-persisted")
 OUTCOME_CHECK_CLASSES = frozenset(
     {
         "artifact-integrity",
@@ -200,6 +212,227 @@ def _base64url_decode(value: str, *, expected_bytes: int, field: str) -> bytes:
     if len(decoded) != expected_bytes or _base64url_encode(decoded) != value:
         raise PublicServiceContractError(f"{field} is invalid")
     return decoded
+
+
+def _execution_mode(value: Any, field: str) -> str:
+    mode = _text(value, field, maximum=16)
+    if mode not in EXECUTION_MODES:
+        raise PublicServiceContractError(f"{field} is invalid")
+    return mode
+
+
+def _history_mode(value: Any, field: str) -> str:
+    mode = _text(value, field, maximum=24)
+    if mode not in HISTORY_MODES:
+        raise PublicServiceContractError(f"{field} is invalid")
+    return mode
+
+
+def _audience(value: Any, field: str) -> str:
+    selected = _text(value, field, maximum=20)
+    if selected not in PUBLIC_AUDIENCES:
+        raise PublicServiceContractError(f"{field} is invalid")
+    return selected
+
+
+def _audiences(value: Any, field: str) -> list[str]:
+    return _sorted_texts(
+        value,
+        field,
+        maximum_items=4,
+        maximum_length=20,
+        allowed=PUBLIC_AUDIENCES,
+    )
+
+
+def validate_service_profile_root_key(value: Any) -> dict[str, str]:
+    """Validate the public, out-of-band trust anchor embedded in a profile."""
+
+    item = _exact(value, {"keyId", "algorithm", "publicKey"}, "service profile root key")
+    key_id = _text(
+        item["keyId"],
+        "service profile root key keyId",
+        maximum=200,
+        pattern=_IDENTIFIER,
+    )
+    algorithm = _text(
+        item["algorithm"],
+        "service profile root key algorithm",
+        maximum=20,
+    )
+    public_key = _text(
+        item["publicKey"],
+        "service profile root key publicKey",
+        maximum=43,
+        pattern=_BASE64URL_32,
+    )
+    if algorithm != SIGNATURE_ALGORITHM:
+        raise PublicServiceContractError("service profile root key algorithm is invalid")
+    _base64url_decode(
+        public_key,
+        expected_bytes=32,
+        field="service profile root key publicKey",
+    )
+    return {"keyId": key_id, "algorithm": algorithm, "publicKey": public_key}
+
+
+def validate_service_profile(value: Any) -> dict[str, Any]:
+    """Validate a credential-free, owner-approved managed-service profile."""
+
+    if not isinstance(value, dict):
+        raise PublicServiceContractError("service profile has an unsupported shape")
+    version = value.get("schemaVersion")
+    if version not in SERVICE_PROFILE_SCHEMA_VERSIONS:
+        raise PublicServiceContractError("service profile schemaVersion is invalid")
+    common = {
+        "schemaVersion",
+        "apiBaseUrl",
+        "serviceId",
+        "rootKey",
+        "acceptedPolicyDigest",
+    }
+    if version == SERVICE_PROFILE_SCHEMA_VERSION_1_0:
+        profile = _exact(
+            value,
+            common | {"dataUseMode", "requestedScopes"},
+            "service profile",
+        )
+    else:
+        profile = _exact(
+            value,
+            common
+            | {
+                "executionMode",
+                "defaultAudience",
+                "historyMode",
+                "requestedAudiences",
+            },
+            "service profile",
+        )
+    checked: dict[str, Any] = {
+        "schemaVersion": version,
+        "apiBaseUrl": _https_url(
+            profile["apiBaseUrl"],
+            "service profile apiBaseUrl",
+            allow_path=False,
+        ),
+        "serviceId": _text(
+            profile["serviceId"],
+            "service profile serviceId",
+            maximum=200,
+            pattern=_IDENTIFIER,
+        ),
+        "rootKey": validate_service_profile_root_key(profile["rootKey"]),
+        "acceptedPolicyDigest": _digest(
+            profile["acceptedPolicyDigest"],
+            "service profile acceptedPolicyDigest",
+        ),
+    }
+    if version == SERVICE_PROFILE_SCHEMA_VERSION_1_0:
+        mode = _text(profile["dataUseMode"], "service profile dataUseMode", maximum=20)
+        if mode not in DATA_USE_MODES:
+            raise PublicServiceContractError("service profile dataUseMode is invalid")
+        checked.update(
+            {
+                "dataUseMode": mode,
+                "requestedScopes": _sorted_texts(
+                    profile["requestedScopes"],
+                    "service profile requestedScopes",
+                    maximum_items=4,
+                    maximum_length=20,
+                    allowed=QUERY_SCOPES,
+                ),
+            }
+        )
+    else:
+        execution_mode = _execution_mode(
+            profile["executionMode"],
+            "service profile executionMode",
+        )
+        if execution_mode != "service":
+            raise PublicServiceContractError(
+                "service profile executionMode must enable the service"
+            )
+        checked.update(
+            {
+                "executionMode": execution_mode,
+                "defaultAudience": _audience(
+                    profile["defaultAudience"],
+                    "service profile defaultAudience",
+                ),
+                "historyMode": _history_mode(
+                    profile["historyMode"],
+                    "service profile historyMode",
+                ),
+                "requestedAudiences": _audiences(
+                    profile["requestedAudiences"],
+                    "service profile requestedAudiences",
+                ),
+            }
+        )
+    if len(canonical_json_bytes(checked)) > MAX_SERVICE_PROFILE_BYTES:
+        raise PublicServiceContractError("service profile exceeds its byte limit")
+    return checked
+
+
+def _immutable_https_resource(value: Any, field: str) -> str:
+    selected = _text(value, field, maximum=2048)
+    try:
+        parsed = urlsplit(selected)
+        port = parsed.port
+    except ValueError as error:
+        raise PublicServiceContractError(f"{field} is invalid") from error
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or not parsed.path.startswith("/")
+        or parsed.path == "/"
+        or parsed.query
+        or parsed.fragment
+        or port is not None
+        and port != 443
+    ):
+        raise PublicServiceContractError(f"{field} is invalid")
+    return selected
+
+
+def validate_official_service_locator(value: Any) -> dict[str, Any]:
+    """Validate release-bundled authority for one-action activation."""
+
+    locator = _exact(
+        value,
+        {"schemaVersion", "profileUrl", "profileDigest", "serviceId", "rootKey"},
+        "official service locator",
+    )
+    if locator["schemaVersion"] != OFFICIAL_SERVICE_LOCATOR_SCHEMA_VERSION:
+        raise PublicServiceContractError(
+            "official service locator schemaVersion is invalid"
+        )
+    checked = {
+        "schemaVersion": OFFICIAL_SERVICE_LOCATOR_SCHEMA_VERSION,
+        "profileUrl": _immutable_https_resource(
+            locator["profileUrl"],
+            "official service locator profileUrl",
+        ),
+        "profileDigest": _digest(
+            locator["profileDigest"],
+            "official service locator profileDigest",
+        ),
+        "serviceId": _text(
+            locator["serviceId"],
+            "official service locator serviceId",
+            maximum=200,
+            pattern=_IDENTIFIER,
+        ),
+        "rootKey": validate_service_profile_root_key(locator["rootKey"]),
+    }
+    if len(canonical_json_bytes(checked)) > MAX_OFFICIAL_SERVICE_LOCATOR_BYTES:
+        raise PublicServiceContractError(
+            "official service locator exceeds its byte limit"
+        )
+    return checked
 
 
 def _signature(value: Any, field: str) -> dict[str, str]:
@@ -882,8 +1115,8 @@ def validate_service_outcome_receipt(
         raise PublicServiceContractError("service outcome receipt effectiveMode is invalid")
     if not isinstance(receipt["rankingEligible"], bool):
         raise PublicServiceContractError("service outcome receipt rankingEligible is invalid")
-    if mode == "confidential" and receipt["rankingEligible"]:
-        raise PublicServiceContractError("confidential service outcomes cannot be ranking eligible")
+    if mode == "private" and receipt["rankingEligible"]:
+        raise PublicServiceContractError("private service outcomes cannot be ranking eligible")
     accepted = isoformat_utc(_timestamp(receipt["acceptedAt"], "service outcome receipt acceptedAt"))
     normalized = {
         "schemaVersion": SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION,

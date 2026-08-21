@@ -47,7 +47,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-"limitless_library" = ["py.typed"]
+"limitless_library" = ["py.typed", "official-service-locator.json"]
 "limitless_library.conformance" = ["*.json"]
 "limitless_library.schemas" = ["*.json"]
 "limitless_library.demo_assets" = [

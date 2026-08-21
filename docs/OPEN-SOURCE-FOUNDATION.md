@@ -24,8 +24,8 @@ trust an undocumented implementation of the core reuse decision.
 - Runtime adherence and functional obligation checks.
 - Local catalog, CLI, Python connector, and stdio MCP adapter.
 - The managed-service request/result, discovery, root-rotation, outcome, and
-  submission contracts; signed conformance corpora; and a bounded opt-in HTTPS
-  client.
+  submission contracts; signed conformance corpora; and a bounded, one-action
+  official-service client with advanced alternate-profile control.
 - A meaningful bundled lifecycle demo, conformance fixtures, and tests.
 
 ## Inspectability
@@ -44,7 +44,7 @@ policy, and protocol boundaries.
 ## Alpha scope
 
 This release supports a single operator and a local catalog, plus an optional
-client that verifies an explicitly configured service's public authority. It
+client that verifies a release-pinned or explicitly configured service's public authority. It
 does not implement remote publisher identity, multi-party policy, managed
 execution, production key custody, or verifier completeness. Internal
 experiments, private receiver data, and unreleased product research are not

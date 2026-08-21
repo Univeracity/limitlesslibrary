@@ -8,12 +8,14 @@ responsibility. The receiver owns installation targets and verifier programs.
 The local stdio MCP command is an operator-selected process, not an
 authenticated remote service.
 
-An optional managed-service profile is a separate trust boundary. The operator
-pins its exact HTTPS endpoint, service identity, Ed25519 root key, accepted
-data-use policy digest, mode, and scopes. The client validates dual-signed root
-rotation, current discovery, result-key lifetime, and exact query/result
-binding. TLS protects transport; the pinned root authenticates service
-content.
+The optional official service is a separate trust boundary. A supported client
+release pins an immutable locator containing the exact profile digest, HTTPS
+resource, service identity, and original Ed25519 root key. One explicit user
+action verifies the profile, dual-signed root rotation, current discovery,
+accepted policy, result-key lifetime, and exact query/result binding before
+credential-free activation state is stored. TLS protects transport; the
+release-pinned root authenticates service content. Alternate profiles remain
+an advanced, explicit operator surface.
 
 ## Enforced properties
 

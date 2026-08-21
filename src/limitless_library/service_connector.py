@@ -42,6 +42,7 @@ from .service_contracts import (
     active_result_keys,
     build_service_query,
     validate_service_discovery,
+    validate_service_profile,
     validate_service_query,
     validate_service_query_result,
     validate_service_root_key_transition_set,
@@ -161,8 +162,10 @@ class ServiceProfile:
     root_key_id: str
     root_public_key: bytes
     accepted_policy_digest: str
-    data_use_mode: str = "standard"
-    requested_scopes: tuple[str, ...] = ("public",)
+    execution_mode: str = "service"
+    default_audience: str = "private"
+    history_mode: str = "local-only"
+    requested_audiences: tuple[str, ...] = ("public",)
     access_token: str | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -171,16 +174,21 @@ class ServiceProfile:
         key_id = _identifier(self.root_key_id, "service root key id")
         root_keys = decode_root_keys({key_id: self.root_public_key})
         policy = _digest(self.accepted_policy_digest, "accepted policy digest")
-        if self.data_use_mode not in {
-            "standard",
-            "history",
-            "organization",
-            "confidential",
-        }:
-            raise ValueError("service data-use mode is invalid")
-        scopes = tuple(sorted(set(self.requested_scopes)))
-        if not scopes or len(scopes) > 4 or not set(scopes).issubset({"public", "organization", "exchange", "private"}):
-            raise ValueError("service requested scopes are invalid")
+        if self.execution_mode != "service":
+            raise ValueError("service execution mode is invalid")
+        if self.default_audience not in {"private", "circle", "organization", "public"}:
+            raise ValueError("service default audience is invalid")
+        if self.history_mode not in {"local-only", "service-persisted"}:
+            raise ValueError("service history mode is invalid")
+        audiences = tuple(sorted(set(self.requested_audiences)))
+        if (
+            not audiences
+            or len(audiences) > 4
+            or not set(audiences).issubset(
+                {"private", "circle", "organization", "public"}
+            )
+        ):
+            raise ValueError("service requested audiences are invalid")
         if self.access_token is not None and (
             not isinstance(self.access_token, str) or _TOKEN.fullmatch(self.access_token) is None
         ):
@@ -190,7 +198,23 @@ class ServiceProfile:
         object.__setattr__(self, "root_key_id", key_id)
         object.__setattr__(self, "root_public_key", root_keys[key_id])
         object.__setattr__(self, "accepted_policy_digest", policy)
-        object.__setattr__(self, "requested_scopes", scopes)
+        object.__setattr__(self, "requested_audiences", audiences)
+
+    @property
+    def legacy_data_use_mode(self) -> str:
+        """Project the current boundary onto the compatibility wire protocol."""
+
+        return "history" if self.history_mode == "service-persisted" else "standard"
+
+    @property
+    def legacy_requested_scopes(self) -> tuple[str, ...]:
+        mapping = {
+            "private": "private",
+            "circle": "exchange",
+            "organization": "organization",
+            "public": "public",
+        }
+        return tuple(sorted(mapping[item] for item in self.requested_audiences))
 
     @classmethod
     def from_json(
@@ -199,39 +223,39 @@ class ServiceProfile:
         *,
         access_token: str | None = None,
     ) -> ServiceProfile:
-        expected = {
-            "schemaVersion",
-            "apiBaseUrl",
-            "serviceId",
-            "rootKey",
-            "acceptedPolicyDigest",
-            "dataUseMode",
-            "requestedScopes",
-        }
-        if not isinstance(value, Mapping) or set(value) != expected:
-            raise ValueError("service profile has an unsupported shape")
-        if value["schemaVersion"] != "limitless.service-profile/1.0":
-            raise ValueError("service profile schemaVersion is invalid")
-        root = value["rootKey"]
-        if not isinstance(root, Mapping) or set(root) != {
-            "keyId",
-            "algorithm",
-            "publicKey",
-        }:
-            raise ValueError("service profile root key is invalid")
-        if root["algorithm"] != "ed25519" or not isinstance(root["publicKey"], str):
-            raise ValueError("service profile root key is invalid")
-        scopes = value["requestedScopes"]
-        if not isinstance(scopes, list) or not all(isinstance(item, str) for item in scopes):
-            raise ValueError("service profile requested scopes are invalid")
+        checked = validate_service_profile(dict(value))
+        root = checked["rootKey"]
+        if checked["schemaVersion"] == "limitless.service-profile/1.0":
+            mode = checked["dataUseMode"]
+            requested_audiences = tuple(
+                {
+                    "private": "private",
+                    "exchange": "circle",
+                    "organization": "organization",
+                    "public": "public",
+                }[item]
+                for item in checked["requestedScopes"]
+            )
+            history_mode = (
+                "service-persisted"
+                if mode in {"history", "organization"}
+                else "local-only"
+            )
+            default_audience = "private"
+        else:
+            requested_audiences = tuple(checked["requestedAudiences"])
+            history_mode = checked["historyMode"]
+            default_audience = checked["defaultAudience"]
         return cls(
-            api_base_url=value["apiBaseUrl"],
-            service_id=value["serviceId"],
+            api_base_url=checked["apiBaseUrl"],
+            service_id=checked["serviceId"],
             root_key_id=root["keyId"],
             root_public_key=_decode_key(root["publicKey"]),
-            accepted_policy_digest=value["acceptedPolicyDigest"],
-            data_use_mode=value["dataUseMode"],
-            requested_scopes=tuple(scopes),
+            accepted_policy_digest=checked["acceptedPolicyDigest"],
+            execution_mode="service",
+            default_audience=default_audience,
+            history_mode=history_mode,
+            requested_audiences=requested_audiences,
             access_token=access_token,
         )
 
@@ -243,8 +267,10 @@ class ServiceProfile:
             "rootKeyId": self.root_key_id,
             "rootKeyFingerprint": sha256_bytes(self.root_public_key),
             "acceptedPolicyDigest": self.accepted_policy_digest,
-            "dataUseMode": self.data_use_mode,
-            "requestedScopes": list(self.requested_scopes),
+            "executionMode": self.execution_mode,
+            "defaultAudience": self.default_audience,
+            "historyMode": self.history_mode,
+            "requestedAudiences": list(self.requested_audiences),
             "authenticated": self.access_token is not None,
         }
 
@@ -512,9 +538,9 @@ class ServiceConnector:
             checked_query = validate_service_query(query, at=now)
         except ValueError as error:
             raise ServiceConnectorError("service query is invalid") from error
-        if checked_query["dataUseMode"] != self.profile.data_use_mode or not set(
+        if checked_query["dataUseMode"] != self.profile.legacy_data_use_mode or not set(
             checked_query["requestedScopes"]
-        ).issubset(set(self.profile.requested_scopes)):
+        ).issubset(set(self.profile.legacy_requested_scopes)):
             raise ServiceConnectorError("service query exceeds the opted-in profile")
         maximum = min(
             MAX_RESULT_BYTES,
@@ -559,9 +585,9 @@ class ServiceConnector:
             request_id=request_id,
             objective=objective,
             receiver_context=receiver_context,
-            requested_scopes=self.profile.requested_scopes,
+            requested_scopes=self.profile.legacy_requested_scopes,
             requested_treatments=requested_treatments,
-            data_use_mode=self.profile.data_use_mode,
+            data_use_mode=self.profile.legacy_data_use_mode,
             client_name="limitless-library-python",
             client_version="0.1.0a0",
             issued_at=issued_at or self._now(),

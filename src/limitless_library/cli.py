@@ -12,6 +12,11 @@ from .catalog import CatalogError, LocalCatalog, seal_capsule
 from .contracts import ContractError, load_json, write_new_json
 from .demo import DemoError, format_demo, run_demo
 from .installer import AdoptionError, adopt_exact_component, seal_recipe, validate_recipe
+from .official_service import (
+    activate_official_service,
+    activated_service_profile,
+    activation_details,
+)
 from .sandbox import containment_readiness
 from .service_connector import (
     ServiceConnector,
@@ -49,13 +54,18 @@ def _format_doctor(result: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
-def _service_connector(profile_path: Path) -> ServiceConnector:
+def _service_connector(profile_path: Path | None) -> ServiceConnector:
     try:
-        profile = ServiceProfile.from_json(
-            load_json(profile_path),
-            access_token=os.environ.get("LIMITLESS_SERVICE_TOKEN"),
+        token = os.environ.get("LIMITLESS_SERVICE_TOKEN")
+        profile = (
+            activated_service_profile(access_token=token)
+            if profile_path is None
+            else ServiceProfile.from_json(
+                load_json(profile_path),
+                access_token=token,
+            )
         )
-    except (ContractError, ValueError) as error:
+    except (ContractError, OSError, ValueError) as error:
         raise ServiceConnectorError("service profile is invalid") from error
     return ServiceConnector(profile)
 
@@ -79,17 +89,35 @@ def _parser() -> argparse.ArgumentParser:
     query.add_argument("--request", type=Path, required=True)
     query.add_argument("--output", type=Path)
 
+    subparsers.add_parser(
+        "service-activate",
+        help="enable the release-pinned official service after verifying its authority",
+    )
+
+    subparsers.add_parser(
+        "service-status",
+        help="show the local or explicitly enabled official-service boundary",
+    )
+
     service_inspect = subparsers.add_parser(
         "service-inspect",
-        help="verify an explicitly configured managed-service profile",
+        help="verify the enabled official service without sending a task",
     )
-    service_inspect.add_argument("--profile", type=Path, required=True)
+    service_inspect.add_argument(
+        "--profile",
+        type=Path,
+        help="advanced: inspect an explicit alternate service profile",
+    )
 
     service_query = subparsers.add_parser(
         "service-query",
-        help="submit and verify one explicitly opted-in managed query",
+        help="submit and verify one query to the enabled official service",
     )
-    service_query.add_argument("--profile", type=Path, required=True)
+    service_query.add_argument(
+        "--profile",
+        type=Path,
+        help="advanced: query through an explicit alternate service profile",
+    )
     service_query.add_argument("--request", type=Path)
     service_query.add_argument("--objective")
     service_query.add_argument("--receiver", type=Path)
@@ -146,6 +174,11 @@ def main() -> None:
                 write_new_json(args.output, decision)
             else:
                 _print(decision)
+        elif args.command == "service-activate":
+            activate_official_service()
+            _print(activation_details())
+        elif args.command == "service-status":
+            _print(activation_details())
         elif args.command == "service-inspect":
             connector = _service_connector(args.profile)
             verified = connector.inspect()

@@ -137,7 +137,7 @@ candidate exists, Limitless abstains without disclosing one.
 - Receiver-owned adherence and obligation verification under Bubblewrap.
 - Python embedding and bounded stdio MCP connector surfaces.
 - Versioned managed-service wire contracts, signed conformance corpora, and an
-  explicitly configured HTTPS connector.
+  explicitly activated, release-pinned HTTPS connector.
 - Authoring and sealing commands, a one-command demo, conformance fixtures,
   and tests.
 
@@ -180,21 +180,26 @@ Python callers can use `query_local(...)` or `McpStdioConnector`. See
 
 ## Optional managed service
 
-Local use remains the default. When an owner deliberately supplies a service
-profile, the same open client can query a managed public, organization, or
-exchange collection without downloading that collection. The profile pins the
-endpoint, service identity, Ed25519 trust root, accepted policy digest,
-data-use mode, and maximum scopes.
+Local use remains the default. An official client release can bundle one
+content-addressed service locator. A single explicit action fetches the exact
+credential-free profile, verifies its pinned identity, Ed25519 root and
+rotation chain, accepted policy, and discovery record, then stores that trust
+boundary locally. No account, downloaded profile, or API key is required for
+baseline public access.
 
 ```bash
-limitless service-inspect --profile ./service-profile.json
-limitless service-query --profile ./service-profile.json --request ./service-query.json
+limitless service-activate
+limitless service-inspect
+limitless service-query --request ./service-query.json
 ```
 
-The client validates root rotation, signed discovery, policy continuity, query
-binding, compatibility, and the signed result before returning it. Remote
-failure yields control back to local reuse. Connecting never publishes a local
-capsule or silently installs selected work. See the
+Source builds without a published locator remain local-only; this repository
+does not invent a live service identity. Advanced integrations may still pass
+an owner-reviewed alternate profile with `--profile`. The client validates
+root rotation, signed discovery, policy continuity, query binding,
+compatibility, and the signed result before returning it. Remote failure yields
+control back to local reuse. Connecting never publishes a local capsule or
+silently installs selected work. See the
 [managed-service connector](docs/MANAGED-SERVICE.md).
 
 ## Authoring

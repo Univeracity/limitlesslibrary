@@ -2,71 +2,54 @@
 
 Limitless Library remains complete for local selection, installation,
 verification, and evidence without an account or network connection. The
-optional connector adds high-signal remote discovery without turning the open
-client into the managed service or uploading a local catalog.
+optional connector adds high-signal service discovery without turning the open
+client into the service or uploading a local catalog.
 
-## Explicit profile
+## One-action official activation
 
-The connector does not discover or select an endpoint implicitly. An operator
-must provide a profile containing the exact HTTPS endpoint, service identity,
-pinned Ed25519 root key, accepted data-use policy digest, data-use mode, and
-allowed scopes:
-
-```json
-{
-  "schemaVersion": "limitless.service-profile/1.0",
-  "apiBaseUrl": "https://api.example.com",
-  "serviceId": "service:example",
-  "rootKey": {
-    "keyId": "root:example",
-    "algorithm": "ed25519",
-    "publicKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-  },
-  "acceptedPolicyDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-  "dataUseMode": "confidential",
-  "requestedScopes": ["public"]
-}
-```
-
-The values above are placeholders, not a live service profile. Obtain the
-complete profile through an authenticated or otherwise trusted publication
-channel. A changed endpoint, service identity, trust root, policy digest, or
-scope requires another explicit operator decision.
-
-If a service profile requires authentication, supply its bearer credential only
-through `LIMITLESS_SERVICE_TOKEN`. The token is excluded from profile files,
-public status output, object representations, query bodies, and persisted
-trust material.
-
-## Verify the service boundary
+A supported client release may contain one `official-service-locator.json`.
+The locator is not an endpoint hint: it binds the exact credential-free profile
+digest and HTTPS resource to the service identity and original Ed25519 root
+key. The ordinary setup is one explicit action:
 
 ```bash
-limitless service-inspect --profile ./service-profile.json
+limitless service-activate
 ```
 
-This command fetches the bounded root-transition set and discovery document,
-then verifies:
+Activation fetches the bounded profile, refuses redirects, proxies,
+compression, query strings, duplicate JSON keys, unknown fields, and
+over-limit responses, then verifies:
 
-- an unbroken, dual-signed transition chain from the pinned root;
-- the current discovery signature and signing-key lifetime;
-- the exact service identity and API endpoint;
-- supported protocol and result versions;
-- the accepted data-use policy digest; and
-- the advertised transition-chain tip.
+- the profile's exact canonical digest, service identity, and original root;
+- an unbroken, dual-signed root-transition chain;
+- current signed discovery and result-key lifetimes;
+- the exact API endpoint and accepted policy digest; and
+- the advertised transition-chain tip and protocol compatibility.
 
-Redirects, ambient HTTP proxies, compressed responses, duplicate JSON keys,
-unknown fields, expired documents, key substitutions, and policy drift fail
-closed.
+Only after every check passes does the client atomically store credential-free
+activation state under the user's configuration directory. Repeating the same
+action is local and idempotent. An authority change requires a separate,
+explicit replacement decision. Availability failure leaves the local-only
+default unchanged.
 
-## Query
+This source release intentionally ships without a live locator. Until an owner
+publishes one through a supported release, `service-activate` reports that the
+service is not configured and local use continues. The repository never
+invents an official identity or silently discovers an endpoint.
 
-An agent or integration can submit a complete
-`limitless.service-query/1.0` record:
+## Inspect and query
+
+After activation, inspection sends no task:
 
 ```bash
-limitless service-query \
-  --profile ./service-profile.json \
-  --request ./service-query.json
+limitless service-status
+limitless service-inspect
+```
+
+An agent or integration can submit a complete bounded service-query record:
+
+```bash
+limitless service-query --request ./service-query.json
 ```
 
 Or let the client bind the query envelope around an explicit objective and
@@ -74,29 +57,51 @@ receiver context:
 
 ```bash
 limitless service-query \
-  --profile ./service-profile.json \
   --request-id request:example-001 \
   --objective "Add a reviewed clipboard history extension" \
   --receiver ./receiver-context.json
 ```
 
-The connector accepts only scopes and the data-use mode already present in
-the profile. It verifies that the signed result binds the exact query,
-receiver compatibility, current service signing key, policy digest, and
-requested treatment. A remote timeout or availability response returns a
-distinct `ServiceUnavailableError` so the caller can continue with local reuse
-or fresh work; it never fabricates a remote selection or silently weakens the
-data-use mode.
+Baseline public access is credential-free. If an authenticated feature is
+later used, its bearer credential is supplied only through
+`LIMITLESS_SERVICE_TOKEN`; it is excluded from profiles, activation state,
+public output, object representations, and query bodies.
 
-Python callers use `ServiceProfile`, `ServiceConnector.build_query(...)`, and
-`ServiceConnector.query(...)`. The packaged
-`limitless_library.conformance` corpora freeze the signed query lifecycle and
-root-rotation behavior for other language implementations.
+The connector accepts only audiences and history behavior already present in
+the activated profile. It verifies that the signed result binds the exact
+query, receiver compatibility, current service signing key, policy digest, and
+requested treatment. A timeout or availability response returns a distinct
+error so the caller can continue with local reuse or fresh work; it never
+fabricates a remote selection or silently weakens the accepted boundary.
+
+## Advanced alternate profiles
+
+Operators building another compatible service can bypass the official
+activation state only through the explicit lower-level option:
+
+```bash
+limitless service-inspect --profile ./owner-reviewed-profile.json
+limitless service-query \
+  --profile ./owner-reviewed-profile.json \
+  --request ./service-query.json
+```
+
+Current profiles use `limitless.service-profile/1.1` and separately declare
+`executionMode`, `defaultAudience` (`private`, `circle`, `organization`, or
+`public`), `historyMode` (`local-only` or `service-persisted`), and
+`requestedAudiences`. Legacy 1.0 profiles remain a validation and transport
+compatibility seam; new public output does not use their older policy
+vocabulary.
+
+Python callers use `ServiceProfile`, `ServiceConnector`, and the functions in
+`limitless_library.official_service`. Packaged conformance corpora freeze the
+signed query lifecycle and root-rotation behavior for other language
+implementations.
 
 ## Deliberate exclusions
 
 Connecting does not publish work, enumerate a workspace, upload a local
 catalog, install a returned component, hand off to a native provider, or submit
-local outcome evidence. Those are separate owner-authorized continuations.
-The managed implementation, identity system, ranking, persistence, analytics,
-and deployment remain outside this repository.
+local outcome evidence. Those are separate owner-authorized continuations. The
+managed implementation, identity system, ranking, persistence, analytics, and
+deployment remain outside this repository.

@@ -11,7 +11,11 @@ from limitless_library import cli
 
 class _Profile:
     def public_summary(self) -> dict[str, object]:
-        return {"apiBaseUrl": "https://api.example", "dataUseMode": "confidential"}
+        return {
+            "apiBaseUrl": "https://api.example",
+            "defaultAudience": "private",
+            "historyMode": "local-only",
+        }
 
 
 class _Connector:
@@ -105,7 +109,52 @@ def test_service_inspect_exposes_the_effective_nonsecret_boundary(
 
     output = json.loads(capsys.readouterr().out)
     assert output["status"] == "connected"
-    assert output["profile"]["dataUseMode"] == "confidential"
+    assert output["profile"]["defaultAudience"] == "private"
+
+
+def test_service_activation_is_one_action_and_prints_the_effective_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(sys, "argv", ["limitless", "service-activate"])
+    monkeypatch.setattr(
+        cli,
+        "activate_official_service",
+        lambda: calls.append("activate") or {"enabled": True},
+    )
+    monkeypatch.setattr(
+        cli,
+        "activation_details",
+        lambda: {
+            "schemaVersion": "limitless.official-service-details/1.0",
+            "enabled": True,
+            "executionMode": "service",
+        },
+    )
+
+    cli.main()
+
+    assert calls == ["activate"]
+    assert json.loads(capsys.readouterr().out)["executionMode"] == "service"
+
+
+def test_service_inspect_uses_activated_profile_without_a_path(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    selected: list[Path | None] = []
+    monkeypatch.setattr(sys, "argv", ["limitless", "service-inspect"])
+    monkeypatch.setattr(
+        cli,
+        "_service_connector",
+        lambda path: selected.append(path) or _Connector(),
+    )
+
+    cli.main()
+
+    assert selected == [None]
+    assert json.loads(capsys.readouterr().out)["status"] == "connected"
 
 
 def test_service_query_accepts_an_exact_request_and_writes_no_implicit_state(

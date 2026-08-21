@@ -54,6 +54,8 @@ in `limitless_library.service_contracts`:
 - `limitless.service-query-result/1.0` and `1.1`;
 - `limitless.service-discovery/1.0`;
 - `limitless.service-root-key-transition/1.0` and its bounded set;
+- `limitless.service-profile/1.1`, official-service locator `1.0`, and local
+  activation state `1.0`;
 - outcome attempt/receipt `1.0`; and
 - submission, transfer-grant, and immutable-release `1.0` contracts.
 
@@ -62,5 +64,5 @@ vectors and declared negative mutations for the query lifecycle and root-key
 rotation. These records are the public compatibility surface; private ranking,
 identity, policy evaluation, persistence, and deployment records are not.
 
-See [Managed-service connector](MANAGED-SERVICE.md) for the profile and HTTPS
-boundary.
+See [Managed-service connector](MANAGED-SERVICE.md) for one-action official
+activation, advanced profiles, and the HTTPS boundary.

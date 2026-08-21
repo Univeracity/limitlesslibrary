@@ -19,3 +19,5 @@
 - Opt-in managed-service profile, bounded HTTPS connector, pinned root and
   rotation validation, policy binding, signed query-result verification, and
   packaged language-neutral conformance corpora.
+- One-action official-service activation with release-pinned locator trust,
+  credential-free local state, local fallback, and advanced alternate profiles.
