@@ -18,6 +18,12 @@ from .contracts import (
     strict_json_loads,
     write_new_json,
 )
+from .exact_file_bundle import (
+    EXACT_FILE_BUNDLE_SCHEMA_VERSION,
+    MAX_EXACT_FILE_BUNDLE_BYTES,
+    ExactFileBundleError,
+    parse_exact_file_bundle,
+)
 from .public_admission_contracts import (
     PublicAdmissionContractError,
     build_contribution_policy_acceptance,
@@ -38,6 +44,7 @@ MAX_PUBLICATION_DRAFT_BYTES = 64 * 1024
 MAX_PUBLICATION_STATE_BYTES = 128 * 1024
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _POLICY_REVISION = re.compile(r"^[A-Za-z][A-Za-z0-9._:-]{0,119}$")
+_EXACT_FILE_BUNDLE_MEDIA_TYPE = "application/vnd.limitless.exact-file-bundle+json"
 
 
 class PublicationError(ServiceConnectorError):
@@ -111,11 +118,23 @@ def _source_descriptor(role: str, configured: str, *, base: Path) -> dict[str, A
             ):
                 raise PublicationError("publication source changed or is invalid")
             hasher = sha256()
+            artifact_payload = bytearray()
             while True:
                 chunk = os.read(descriptor, 128 * 1024)
                 if not chunk:
                     break
                 hasher.update(chunk)
+                if role == "artifact":
+                    artifact_payload.extend(chunk)
+                    if len(artifact_payload) > MAX_EXACT_FILE_BUNDLE_BYTES:
+                        raise PublicationError("publication artifact exceeds the exact bundle limit")
+            if role == "artifact":
+                try:
+                    parse_exact_file_bundle(bytes(artifact_payload))
+                except ExactFileBundleError as error:
+                    raise PublicationError(
+                        "publication artifact is not a canonical exact file bundle"
+                    ) from error
         finally:
             os.close(descriptor)
     except PublicationError:
@@ -127,6 +146,14 @@ def _source_descriptor(role: str, configured: str, *, base: Path) -> dict[str, A
         "digest": "sha256:" + hasher.hexdigest(),
         "byteLength": current.st_size,
         "path": str(path),
+        **(
+            {
+                "format": EXACT_FILE_BUNDLE_SCHEMA_VERSION,
+                "mediaType": _EXACT_FILE_BUNDLE_MEDIA_TYPE,
+            }
+            if role == "artifact"
+            else {}
+        ),
     }
 
 
@@ -152,7 +179,10 @@ def _new_state(
         destination={"collectionId": "collection:public", "audience": "public"},
         candidate=draft["candidate"],
         lineage=draft["lineage"],
-        contentObjects=[{key: item[key] for key in ("role", "digest", "byteLength")} for item in sources],
+        contentObjects=[
+            {key: item[key] for key in item if key != "path"}
+            for item in sources
+        ],
         compatibility=draft["compatibility"],
         buildContext=draft["buildContext"],
         evidenceDigests=draft["evidenceDigests"],
@@ -223,16 +253,26 @@ def _saved_state(
         raise PublicationError("publication state intent is unbound")
     sources: list[dict[str, Any]] = []
     for item in value["sources"]:
+        role = item.get("role") if isinstance(item, dict) else None
+        fields = {"role", "digest", "byteLength", "path"}
+        if role == "artifact":
+            fields.update({"format", "mediaType"})
         if (
             not isinstance(item, dict)
-            or set(item) != {"role", "digest", "byteLength", "path"}
+            or set(item) != fields
             or not isinstance(item["path"], str)
             or not Path(item["path"]).is_absolute()
+            or role == "artifact"
+            and (
+                item["format"] != EXACT_FILE_BUNDLE_SCHEMA_VERSION
+                or item["mediaType"] != _EXACT_FILE_BUNDLE_MEDIA_TYPE
+            )
         ):
             raise PublicationError("publication state source is invalid")
         sources.append(dict(item))
-    declared = {(item["role"], item["digest"], item["byteLength"]) for item in intent["contentObjects"]}
-    if {(item["role"], item["digest"], item["byteLength"]) for item in sources} != declared:
+    declared = [{key: item[key] for key in item} for item in intent["contentObjects"]]
+    supplied = [{key: item[key] for key in item if key != "path"} for item in sources]
+    if supplied != declared:
         raise PublicationError("publication state sources differ from its intent")
     return {**value, "intent": intent, "sources": sources}
 

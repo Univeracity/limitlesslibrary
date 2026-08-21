@@ -706,9 +706,62 @@ def test_query_builder_emits_only_the_current_public_policy_vocabulary() -> None
     assert query["executionMode"] == "service"
     assert query["historyMode"] == "local-only"
     assert query["requestedAudiences"] == ["circle", "public"]
+    assert query["client"]["supportedResults"] == [
+        "limitless.service-query-result/1.3"
+    ]
     assert "dataUseMode" not in query
     assert "requestedScopes" not in query
     assert "exchange" not in canonical_json_bytes(query).decode("utf-8")
+
+
+def test_query_builder_negotiates_current_result_from_current_discovery() -> None:
+    corpus = load_json(CORPUS)
+    root_signer = InstallationSigner.generate()
+    result_signer = InstallationSigner.generate()
+    policy_digest = sha256_json({"policy": "current-discovery"})
+    discovery = build_service_discovery(
+        service_id="service:current-discovery-test",
+        api_base_url="https://api.limitlesslibrary.com",
+        signing_keys=[
+            (
+                result_signer.key_id,
+                result_signer.public_bytes(),
+                AT - timedelta(days=1),
+                AT + timedelta(days=1),
+            )
+        ],
+        data_use_policy_url="https://limitlesslibrary.com/data-use",
+        data_use_policy_digest=policy_digest,
+        publication_policy_revision="policy:current-discovery-test",
+        publication_policy_url="https://limitlesslibrary.com/publication-policy",
+        publication_policy_digest=sha256_json({"policy": "publication"}),
+        rate_limit_class="public-test",
+        issued_at=AT.replace(second=0),
+        root_signer=root_signer,
+    )
+    current = {**corpus, "discovery": discovery}
+    connector = ServiceConnector(
+        ServiceProfile(
+            api_base_url=discovery["apiBaseUrl"],
+            service_id=discovery["serviceId"],
+            root_key_id=root_signer.key_id,
+            root_public_key=root_signer.public_bytes(),
+            accepted_policy_digest=policy_digest,
+            requested_audiences=("public",),
+        ),
+        transport=MemoryTransport(current),
+        clock=lambda: AT,
+    )
+
+    query = connector.build_query(
+        request_id="request:current-result-negotiation-001",
+        objective="Find one compatible reviewed customization.",
+        receiver_context=corpus["query"]["receiverContext"],
+    )
+
+    assert query["client"]["supportedResults"] == [
+        "limitless.service-query-result/1.4"
+    ]
 
 
 def test_legacy_profile_is_mapped_without_re_emitting_deprecated_vocabulary() -> None:

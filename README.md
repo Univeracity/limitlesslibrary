@@ -227,8 +227,10 @@ control back to local reuse. Connecting alone never publishes a local capsule
 or silently installs selected work. Exact remote artifacts move only after the
 caller supplies `--artifact-output`: the client sends the signed one-use
 capability in a header, verifies the declared length and digest, and creates a
-new owner-only file without overwrite. Staging is not installation or proof of
-adoption.
+new owner-only file without overwrite. Current exact selections also bind and
+verify the canonical bundle format, vendor media type, and positive length.
+Staging is not parsing, installation, or proof of adoption; those remain
+receiver-adapter responsibilities.
 
 Publication is likewise explicit. `service-publish` accepts a small draft that
 names only the files the user chose, resolves their paths relative to the draft
@@ -238,7 +240,9 @@ with the command-line confirmation above, negotiates digests first, streams
 only missing bytes, retries the immutable submission, and returns its admission
 state. The same owner-only state supports later status inspection and explicit
 withdrawal without retaining credentials in the draft or command line. It does
-not scan or upload a workspace. See the
+not scan or upload a workspace. Artifact sources must already be canonical
+`limitless.exact-file-bundle/1.0` payloads; the client verifies that shape
+locally and binds it into the current signed publication intent. See the
 [managed-service connector](docs/MANAGED-SERVICE.md).
 
 ## Authoring

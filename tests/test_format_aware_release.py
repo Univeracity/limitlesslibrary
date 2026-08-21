@@ -165,8 +165,8 @@ def test_format_descriptor_survives_signed_intent_and_release() -> None:
     assert descriptor["mediaType"] == EXACT_MEDIA_TYPE
     assert release["schemaVersion"] == IMMUTABLE_RELEASE_SCHEMA_VERSION_1_2
     assert release["contentObjects"] == intent["contentObjects"]
-    assert SUBMISSION_INTENT_SCHEMA_VERSION_1_2 not in SUBMISSION_INTENT_SCHEMA_VERSIONS
-    assert IMMUTABLE_RELEASE_SCHEMA_VERSION_1_2 not in IMMUTABLE_RELEASE_SCHEMA_VERSIONS
+    assert SUBMISSION_INTENT_SCHEMA_VERSION_1_2 in SUBMISSION_INTENT_SCHEMA_VERSIONS
+    assert IMMUTABLE_RELEASE_SCHEMA_VERSION_1_2 in IMMUTABLE_RELEASE_SCHEMA_VERSIONS
 
 
 def test_transfer_plan_retains_the_legacy_three_field_object_shape() -> None:

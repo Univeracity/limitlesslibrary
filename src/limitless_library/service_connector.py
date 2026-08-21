@@ -74,9 +74,9 @@ from .service_contracts import (
     MAX_QUERY_BYTES,
     MAX_RESULT_BYTES,
     MAX_ROOT_KEY_TRANSITION_SET_BYTES,
+    POLICY_BOUND_SERVICE_QUERY_RESULT_SCHEMA_VERSIONS,
     SERVICE_CONTENT_UPLOAD_SCHEMA_VERSION,
     SERVICE_PROTOCOL_VERSION,
-    SERVICE_QUERY_RESULT_SCHEMA_VERSION,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
     SERVICE_QUERY_RESULT_SCHEMA_VERSIONS,
     SERVICE_QUERY_SCHEMA_VERSION,
@@ -886,7 +886,7 @@ class ServiceConnector:
     def _result_matches_profile(self, checked_result: dict[str, Any]) -> bool:
         return (
             checked_result["schemaVersion"]
-            in {SERVICE_QUERY_RESULT_SCHEMA_VERSION, SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4}
+            in POLICY_BOUND_SERVICE_QUERY_RESULT_SCHEMA_VERSIONS
             and checked_result["policy"]["policyDigest"] == self.profile.accepted_policy_digest
             and checked_result["policy"]["executionMode"] == self.profile.execution_mode
             and checked_result["policy"]["historyMode"] == self.profile.history_mode
@@ -1491,6 +1491,17 @@ class ServiceConnector:
         issued_at: datetime | None = None,
         ttl_seconds: int = 60,
     ) -> dict[str, Any]:
+        verified = self.inspect()
+        compatible_results = [
+            version
+            for version in SERVICE_QUERY_RESULT_SCHEMA_VERSIONS
+            if version in POLICY_BOUND_SERVICE_QUERY_RESULT_SCHEMA_VERSIONS
+            and version in verified.discovery["resultVersions"]
+        ]
+        if not compatible_results:
+            raise ServiceConnectorError(
+                "service does not advertise a policy-bound result generation"
+            )
         return build_service_query(
             request_id=request_id,
             objective=objective,
@@ -1503,4 +1514,5 @@ class ServiceConnector:
             client_version="0.1.0a0",
             issued_at=issued_at or self._now(),
             ttl_seconds=ttl_seconds,
+            supported_result_version=compatible_results[-1],
         )

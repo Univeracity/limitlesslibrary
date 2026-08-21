@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
 from limitless_library.contracts import canonical_json_bytes, sha256_json, strict_json_loads
+from limitless_library.exact_file_bundle import build_exact_file_bundle
 from limitless_library.public_submission_contracts import (
     build_submission_plan,
     public_submission_ref,
@@ -310,6 +312,45 @@ def test_one_command_publication_is_resumable_and_cwd_independent(tmp_path: Path
     assert transport.upload_calls == 1
     assert state.read_bytes() == original
     assert state.stat().st_mode & 0o777 == 0o600
+
+
+def test_artifact_publication_uses_current_format_aware_intent(tmp_path: Path) -> None:
+    connector, transport, signer, publisher = _fixture()
+    draft_path = _write_draft(tmp_path)
+    draft = strict_json_loads(draft_path.read_text(encoding="utf-8"))
+    bundle = build_exact_file_bundle(
+        {"manifest.json": b'{"schemaVersion":1,"id":"example.plugin"}\n'}
+    )
+    (tmp_path / "plugin.bundle").write_bytes(bundle)
+    draft["candidate"] = {
+        **draft["candidate"],
+        "treatment": "exact-component",
+    }
+    draft["objects"] = [{"role": "artifact", "path": "plugin.bundle"}]
+    draft_path.write_bytes(canonical_json_bytes(draft) + b"\n")
+
+    published = publish_draft(
+        connector,
+        draft_path=draft_path,
+        state_path=None,
+        signer=signer,
+        publisher=publisher,
+        accepted_publication_policy_digest=transport.policy["digest"],
+        now=NOW,
+    )
+
+    assert published["planState"] == "accepted"
+    assert transport.intent is not None
+    assert transport.intent["schemaVersion"] == "limitless.service-submission-intent/1.2"
+    assert transport.intent["contentObjects"] == [
+        {
+            "role": "artifact",
+            "digest": "sha256:" + sha256(bundle).hexdigest(),
+            "byteLength": len(bundle),
+            "format": "limitless.exact-file-bundle/1.0",
+            "mediaType": "application/vnd.limitless.exact-file-bundle+json",
+        }
+    ]
 
 
 def test_publication_requires_exact_reviewed_policy_digest(tmp_path: Path) -> None:

@@ -52,9 +52,8 @@ in `limitless_library.service_contracts`:
 
 - current query `limitless.service-query/1.1`, with validation-only `1.0`
   compatibility;
-- current result `limitless.service-query-result/1.3`, with validation-only
-  `1.0`–`1.2` compatibility; explicit experimental `1.4` construction and
-  validation is available for conformance but is not advertised by discovery;
+- current result `limitless.service-query-result/1.4`; discovery advertises
+  `1.1`–`1.4`, while `1.0` remains validation-only for historical evidence;
 - current discovery `limitless.service-discovery/1.2`, with `1.0` and `1.1`
   compatibility;
 - `limitless.service-root-key-transition/1.0` and its bounded set;
@@ -63,10 +62,9 @@ in `limitless_library.service_contracts`:
 - installation registration, service attestation, session request, and session
   response `1.0` records;
 - outcome attempt/receipt `1.0`;
-- signed submission intent `1.1`, plan `1.0`, content-transfer grant/result
-  `1.0`, and immutable release `1.1`; explicit experimental intent `1.2` and
-  release `1.2` construction and validation are available for conformance but
-  are not advertised or used by ordinary publication; and
+- current signed submission intent `1.2`, plan `1.0`, content-transfer
+  grant/result `1.0`, and immutable release `1.2`, with `1.0`/`1.1`
+  validation compatibility; and
 - contribution-policy acceptance, admission assessment/status, and release
   revocation `1.0` records.
 
@@ -76,24 +74,17 @@ installation identity, and root-key rotation. These records are the public
 compatibility surface; private ranking, identity persistence, policy
 evaluation, service storage, and deployment records are not.
 
-Current exact-artifact selections carry a query-free HTTPS URI and one-use
-`Limitless-Capability` header value inside the signed result. Artifact bytes do
-not cross MCP or the JSON query response. The opt-in HTTPS continuation accepts
-at most 128 KiB of `application/octet-stream`, binds its length and digest to
-the signed selection, and stages it without overwrite. Receiver installation,
-verification, observed invocation, and outcome submission remain distinct
-events.
-
-Experimental result `1.4` additionally binds an exact positive byte length and
+Current result `1.4` exact-artifact selections carry a query-free HTTPS URI,
+one-use `Limitless-Capability` header value, exact positive byte length, and
 the closed `limitless.exact-file-bundle/1.0` format/media-type pair inside the
-signed selection. Current discovery and ordinary queries remain on `1.3`; an
-explicit 1.4 continuation streams at most 64 MiB into an unpublished owner-only
+signed selection. Artifact bytes do not cross MCP or the JSON query response.
+The continuation streams at most 64 MiB into an unpublished owner-only
 temporary file, verifies the signed/declared/received length and digest, and
 publishes without overwrite. Receiver installation remains separate. A client
-must not infer this descriptor for older results or mix the two generations in
-one query.
+must not infer this descriptor for older results; historical `1.3` artifacts
+remain opaque and use their legacy bounded staging path.
 
-Experimental signed submission intent `1.2` establishes where that descriptor
+Signed submission intent `1.2` establishes where that descriptor
 must originate. Its artifact content object binds the same closed bundle
 format, vendor media type, digest, and positive length of at most 64 MiB; the
 immutable release `1.2` preserves the descriptor byte for byte. Non-artifact
@@ -103,11 +94,12 @@ protocol does not acquire interpretation authority. The packaged static corpus
 proves intent, plan, and release signatures plus declared format, media-type,
 size, and signature mutations across implementations.
 
-This generation is validation-only. Discovery, the ordinary publication CLI,
-and the managed admission path remain on intent/release `1.1` until admission,
-projection, delivery authorization, and result `1.4` can activate together.
-Existing releases remain format-blind and must never be upgraded by sniffing or
-private source hints.
+This generation is active across ordinary publication, admission, projection,
+delivery authorization, and result `1.4`. Before signing an artifact
+publication, the client parses its bytes as a canonical exact file bundle and
+binds the known format and media type into the intent. Existing `1.0`/`1.1`
+releases remain format-blind and must never be upgraded by sniffing or private
+source hints.
 
 Public contribution uses a separate query-free data plane. Signed discovery
 advertises its upload version and maximum object size. The client negotiates a

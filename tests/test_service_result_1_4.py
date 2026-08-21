@@ -10,7 +10,7 @@ import pytest
 
 from limitless_library.contracts import load_json, sha256_json
 from limitless_library.service_contracts import (
-    SERVICE_QUERY_RESULT_SCHEMA_VERSION,
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_3,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
     SERVICE_QUERY_RESULT_SCHEMA_VERSIONS,
     PublicServiceContractError,
@@ -69,7 +69,7 @@ def _build(query: dict, selection: dict, next_action: dict, signer: Installation
     )
 
 
-def test_result_1_4_binds_exact_artifact_descriptor_but_is_not_advertised() -> None:
+def test_result_1_4_binds_and_advertises_exact_artifact_descriptor() -> None:
     query, selection, next_action, signer, policy = _fixture()
 
     result = _build(query, selection, next_action, signer, policy)
@@ -82,7 +82,7 @@ def test_result_1_4_binds_exact_artifact_descriptor_but_is_not_advertised() -> N
 
     assert checked["schemaVersion"] == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4
     assert checked["selection"]["immutable"]["byteLength"] == 401
-    assert SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4 not in SERVICE_QUERY_RESULT_SCHEMA_VERSIONS
+    assert SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4 in SERVICE_QUERY_RESULT_SCHEMA_VERSIONS
 
     for field, value in (
         ("byteLength", 402),
@@ -172,7 +172,7 @@ def test_result_generations_cannot_be_mixed_or_smuggled_into_1_3() -> None:
     mixed["client"] = {
         **mixed["client"],
         "supportedResults": [
-            SERVICE_QUERY_RESULT_SCHEMA_VERSION,
+            SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_3,
             SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
         ],
     }
@@ -182,7 +182,7 @@ def test_result_generations_cannot_be_mixed_or_smuggled_into_1_3() -> None:
             at=NOW,
         )
 
-    current = build_service_query(
+    legacy = build_service_query(
         request_id="request:artifact-1-3-descriptor-smuggle",
         objective=query["objective"],
         receiver_context=query["receiverContext"],
@@ -193,6 +193,7 @@ def test_result_generations_cannot_be_mixed_or_smuggled_into_1_3() -> None:
         client_name="limitless-library-conformance",
         client_version="0.1.0",
         issued_at=NOW,
+        supported_result_version=SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_3,
     )
     with pytest.raises(PublicServiceContractError, match="unsupported shape"):
-        _build(current, selection, next_action, signer, policy)
+        _build(legacy, selection, next_action, signer, policy)
