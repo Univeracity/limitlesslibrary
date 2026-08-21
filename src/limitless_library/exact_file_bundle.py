@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -51,7 +52,11 @@ def _path(value: Any) -> str:
         encoded = value.encode("utf-8")
     except UnicodeError as error:
         raise ExactFileBundleError("exact bundle file path is invalid") from error
-    if len(encoded) > 500:
+    if (
+        len(encoded) > 500
+        or unicodedata.normalize("NFC", value) != value
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
         raise ExactFileBundleError("exact bundle file path is invalid")
     try:
         path = relative_path(value, "exact bundle file path")

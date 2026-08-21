@@ -37,6 +37,8 @@ def test_exact_file_bundle_is_canonical_sorted_and_self_verifying() -> None:
     [
         ("path", "../outside", "path"),
         ("path", ".git/config", "Git metadata"),
+        ("path", "line\nbreak", "path"),
+        ("path", "e\u0301.txt", "path"),
         ("mode", "04755", "mode"),
         ("byteLength", 99, "bytes differ"),
         ("contentDigest", "sha256:" + "0" * 64, "bytes differ"),
