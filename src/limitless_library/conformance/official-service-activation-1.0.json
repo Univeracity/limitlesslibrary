@@ -1,0 +1,162 @@
+{
+  "corpusDigest": "sha256:b6751c380625d9f5dea0fb9e522ef9e76145f6b85f9b6e7e46c4bfa9f2969f3e",
+  "discovery": {
+    "apiBaseUrl": "https://api.limitlesslibrary.com",
+    "contentTransferGrantVersions": [
+      "limitless.service-content-transfer-grant/1.0"
+    ],
+    "dataUsePolicy": {
+      "digest": "sha256:62df2b650f4c3f9dd48ae1fe749be3f1938bf6ea4c96cb2a8602e6e1b250e86d",
+      "url": "https://limitlesslibrary.com/data-use"
+    },
+    "documentDigest": "sha256:ecc1c811785a2af50d54b2120c327c12b36348541c9fb092f34cb0a5da495a18",
+    "expiresAt": "2026-08-21T22:00:00Z",
+    "issuedAt": "2026-08-20T22:00:00Z",
+    "limits": {
+      "maxContentTransferGrantBytes": 16384,
+      "maxOutcomeAttemptBytes": 4096,
+      "maxOutcomeReceiptBytes": 8192,
+      "maxQueryBytes": 8192,
+      "maxReleaseBytes": 32768,
+      "maxResultBytes": 32768,
+      "maxSubmissionIntentBytes": 16384,
+      "maxSubmissionPlanBytes": 16384,
+      "rateLimitClass": "public-beta"
+    },
+    "outcomeAttemptVersions": [
+      "limitless.service-outcome-attempt/1.0"
+    ],
+    "outcomeReceiptVersions": [
+      "limitless.service-outcome-receipt/1.0",
+      "limitless.service-outcome-receipt/1.1"
+    ],
+    "protocolVersion": "limitless.service/1.0",
+    "queryVersions": [
+      "limitless.service-query/1.0",
+      "limitless.service-query/1.1"
+    ],
+    "releaseVersions": [
+      "limitless.service-release/1.0"
+    ],
+    "resultVersions": [
+      "limitless.service-query-result/1.0",
+      "limitless.service-query-result/1.1",
+      "limitless.service-query-result/1.2",
+      "limitless.service-query-result/1.3"
+    ],
+    "rootTransitionState": {
+      "latestSequence": 0,
+      "latestTransitionDigest": null
+    },
+    "rootTransitionVersions": [
+      "limitless.service-root-key-transition/1.0"
+    ],
+    "schemaVersion": "limitless.service-discovery/1.0",
+    "serviceId": "service:limitless-conformance",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "root:public-lifecycle-1.1-conformance",
+      "value": "oZ5VJZgv_n1By2sdsJSP9UNXibNLF0_zyWNcuaONsWAT5ELfC4Yn9mr4ad3Rza3ZJKtkx9JHPhyRV4RB_cDtAQ"
+    },
+    "signingKeys": [
+      {
+        "algorithm": "ed25519",
+        "keyId": "key:public-lifecycle-1.1-conformance",
+        "publicKey": "oJql9HpnWYAv-VX43C0qFKXJnSO-l_hkEn_5ODRVpPA",
+        "validFrom": "2026-08-19T22:00:00Z",
+        "validUntil": "2026-09-19T22:00:00Z"
+      }
+    ],
+    "submissionIntentVersions": [
+      "limitless.service-submission-intent/1.0"
+    ],
+    "submissionPlanVersions": [
+      "limitless.service-submission-plan/1.0"
+    ]
+  },
+  "expected": {
+    "defaultAudience": "private",
+    "executionMode": "service",
+    "historyMode": "local-only",
+    "requestedAudiences": [
+      "public"
+    ],
+    "validAt": "2026-08-20T22:00:30Z"
+  },
+  "invalidCases": [
+    {
+      "error": "bundled-trust",
+      "name": "profile-substitution",
+      "path": [
+        "acceptedPolicyDigest"
+      ],
+      "replacement": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "target": "profile"
+    },
+    {
+      "error": "locator",
+      "name": "locator-query-string",
+      "path": [
+        "profileUrl"
+      ],
+      "replacement": "https://limitlesslibrary.example/profile.json?policy=changed",
+      "target": "locator"
+    },
+    {
+      "error": "authority",
+      "name": "discovery-policy-drift",
+      "path": [
+        "dataUsePolicy",
+        "digest"
+      ],
+      "replacement": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "target": "discovery"
+    },
+    {
+      "error": "authority",
+      "name": "transition-service-substitution",
+      "path": [
+        "serviceId"
+      ],
+      "replacement": "service:other",
+      "target": "rootTransitions"
+    }
+  ],
+  "locator": {
+    "profileDigest": "sha256:e14e27533d672e105fbd5b66b3eb60965d82a9dedc839738bb0dbc6e0fe3ea5b",
+    "profileUrl": "https://limitlesslibrary.example/.well-known/profiles/conformance-1.json",
+    "rootKey": {
+      "algorithm": "ed25519",
+      "keyId": "root:public-lifecycle-1.1-conformance",
+      "publicKey": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc"
+    },
+    "schemaVersion": "limitless.official-service-locator/1.0",
+    "serviceId": "service:limitless-conformance"
+  },
+  "profile": {
+    "acceptedPolicyDigest": "sha256:62df2b650f4c3f9dd48ae1fe749be3f1938bf6ea4c96cb2a8602e6e1b250e86d",
+    "apiBaseUrl": "https://api.limitlesslibrary.com",
+    "defaultAudience": "private",
+    "executionMode": "service",
+    "historyMode": "local-only",
+    "requestedAudiences": [
+      "public"
+    ],
+    "rootKey": {
+      "algorithm": "ed25519",
+      "keyId": "root:public-lifecycle-1.1-conformance",
+      "publicKey": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc"
+    },
+    "schemaVersion": "limitless.service-profile/1.1",
+    "serviceId": "service:limitless-conformance"
+  },
+  "rootTransitions": {
+    "latestSequence": 0,
+    "latestTransitionDigest": null,
+    "schemaVersion": "limitless.service-root-key-transition-set/1.0",
+    "serviceId": "service:limitless-conformance",
+    "transitions": []
+  },
+  "schemaVersion": "limitless.official-service-activation-conformance/1.0"
+}
+

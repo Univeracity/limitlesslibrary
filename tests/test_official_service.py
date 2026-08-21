@@ -28,6 +28,13 @@ CORPUS = Path(
         )
     )
 )
+OFFICIAL_CORPUS = Path(
+    str(
+        files("limitless_library.conformance").joinpath(
+            "official-service-activation-1.0.json"
+        )
+    )
+)
 
 
 def _records() -> tuple[dict[str, Any], dict[str, Any], dict[str, dict[str, Any]]]:
@@ -66,6 +73,22 @@ def _records() -> tuple[dict[str, Any], dict[str, Any], dict[str, dict[str, Any]
         discovery["apiBaseUrl"] + "/.well-known/limitless-service": discovery,
     }
     return locator, profile, resources
+
+
+def _official_resources(corpus: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    api = corpus["profile"]["apiBaseUrl"]
+    return {
+        corpus["locator"]["profileUrl"]: corpus["profile"],
+        api + "/.well-known/limitless-root-transitions": corpus["rootTransitions"],
+        api + "/.well-known/limitless-service": corpus["discovery"],
+    }
+
+
+def _replace(value: dict[str, Any], path: list[str], replacement: Any) -> None:
+    cursor = value
+    for segment in path[:-1]:
+        cursor = cursor[segment]
+    cursor[path[-1]] = replacement
 
 
 class MemoryTransport:
@@ -141,6 +164,44 @@ def test_one_action_verifies_authority_and_persists_credential_free_state(
         == state
     )
     assert transport.calls == previous_calls
+
+
+def test_private_and_public_implementations_share_the_exact_activation_corpus(
+    tmp_path: Path,
+) -> None:
+    corpus = load_json(OFFICIAL_CORPUS)
+    digest = corpus.pop("corpusDigest")
+    assert digest == sha256_json(corpus)
+    corpus["corpusDigest"] = digest
+    at = datetime.fromisoformat(corpus["expected"]["validAt"])
+
+    state = activate_service_from_locator(
+        corpus["locator"],
+        state_path=tmp_path / "official-corpus.json",
+        at=at,
+        transport=MemoryTransport(_official_resources(corpus)),
+    )
+
+    assert state["profile"] == corpus["profile"]
+    details = activation_details(tmp_path / "official-corpus.json")
+    for field in (
+        "executionMode",
+        "defaultAudience",
+        "historyMode",
+        "requestedAudiences",
+    ):
+        assert details[field] == corpus["expected"][field]
+
+    for index, case in enumerate(corpus["invalidCases"]):
+        changed = deepcopy(corpus)
+        _replace(changed[case["target"]], case["path"], case["replacement"])
+        with pytest.raises(OfficialServiceActivationError):
+            activate_service_from_locator(
+                changed["locator"],
+                state_path=tmp_path / f"invalid-{index}.json",
+                at=at,
+                transport=MemoryTransport(_official_resources(changed)),
+            )
 
 
 def test_substituted_profile_and_authority_fail_closed(tmp_path: Path) -> None:
