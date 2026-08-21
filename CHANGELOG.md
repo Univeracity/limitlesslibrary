@@ -33,3 +33,5 @@
 - One-command resumable anonymous publication with draft-relative explicit
   sources, digest-first negotiation, bounded streaming of missing bytes, and
   publisher-visible admission status.
+- Owner-only publication follow-up for admission inspection and idempotent
+  signed withdrawal of an active release.

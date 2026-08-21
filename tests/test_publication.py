@@ -6,8 +6,16 @@ from pathlib import Path
 import pytest
 
 from limitless_library.contracts import canonical_json_bytes, sha256_json, strict_json_loads
-from limitless_library.public_submission_contracts import build_submission_plan
-from limitless_library.publication import PublicationError, publish_draft
+from limitless_library.public_submission_contracts import (
+    build_submission_plan,
+    public_submission_ref,
+)
+from limitless_library.publication import (
+    PublicationError,
+    publication_status,
+    publish_draft,
+    revoke_publication,
+)
 from limitless_library.service_connector import (
     ServiceConnector,
     ServiceHttpResponse,
@@ -27,6 +35,31 @@ class PublicationWorkflowTransport:
         self.intent: dict | None = None
         self.uploaded: set[str] = set()
         self.upload_calls = 0
+        self.admission_state = "pending"
+        self.release_ref = {
+            "releaseId": "release:" + "7" * 32,
+            "releaseDigest": "sha256:" + "7" * 64,
+        }
+        self.revocation_calls = 0
+
+    def submission_ref(self) -> str:
+        assert self.intent is not None
+        return public_submission_ref(
+            tenant_id=self.intent["publisher"]["authorityId"],
+            publisher_id=self.intent["publisher"]["publisherId"],
+            request_id=self.intent["requestId"],
+        )
+
+    def plan(self, known: set[str]) -> dict:
+        assert self.intent is not None
+        return build_submission_plan(
+            intent=self.intent,
+            known_object_digests=known,
+            review_stages=("compatibility", "quality", "rights", "security"),
+            issued_at=NOW,
+            signer=self.signer,
+            submission_ref=self.submission_ref(),
+        )
 
     def request(
         self,
@@ -51,29 +84,33 @@ class PublicationWorkflowTransport:
         elif url.endswith("/v1/submissions"):
             assert body is not None
             self.intent = strict_json_loads(body.decode("utf-8"))
-            value = build_submission_plan(
-                intent=self.intent,
-                known_object_digests=self.uploaded,
-                review_stages=("compatibility", "quality", "rights", "security"),
-                issued_at=NOW,
-                signer=self.signer,
-            )
+            value = self.plan(self.uploaded)
         elif url.endswith("/admission-status"):
             assert self.intent is not None
-            plan = build_submission_plan(
-                intent=self.intent,
-                known_object_digests=self.uploaded,
-                review_stages=("compatibility", "quality", "rights", "security"),
-                issued_at=NOW,
-                signer=self.signer,
-            )
             value = {
                 "schemaVersion": "limitless.public-admission-status/1.0",
                 "admissionRef": "public-admission:workflow",
-                "submissionRef": plan["submissionRef"],
-                "state": "pending",
-                "releaseRef": None,
+                "submissionRef": self.submission_ref(),
+                "state": self.admission_state,
+                "releaseRef": self.release_ref if self.admission_state in {"active", "revoked"} else None,
                 "reasonCodes": [],
+                "generation": 2,
+                "updatedAt": NOW.isoformat().replace("+00:00", "Z"),
+            }
+        elif url.endswith("/revocations"):
+            assert body is not None
+            request = strict_json_loads(body.decode("utf-8"))
+            assert request["submissionRef"] == self.submission_ref()
+            assert request["releaseId"] == self.release_ref["releaseId"]
+            self.admission_state = "revoked"
+            self.revocation_calls += 1
+            value = {
+                "schemaVersion": "limitless.public-admission-status/1.0",
+                "admissionRef": "public-admission:workflow",
+                "submissionRef": self.submission_ref(),
+                "state": "revoked",
+                "releaseRef": self.release_ref,
+                "reasonCodes": [request["reasonCode"]],
                 "generation": 2,
                 "updatedAt": NOW.isoformat().replace("+00:00", "Z"),
             }
@@ -104,13 +141,7 @@ class PublicationWorkflowTransport:
         self.uploaded.add(expected_digest)
         self.upload_calls += 1
         descriptor = next(item for item in self.intent["contentObjects"] if item["digest"] == expected_digest)
-        plan = build_submission_plan(
-            intent=self.intent,
-            known_object_digests=(),
-            review_stages=("compatibility", "quality", "rights", "security"),
-            issued_at=NOW,
-            signer=self.signer,
-        )
+        plan = self.plan(set())
         value = {
             "schemaVersion": "limitless.service-content-transfer-result/1.0",
             "grantId": "grant:" + "5" * 32,
@@ -294,4 +325,85 @@ def test_publication_requires_explicit_policy_acceptance(tmp_path: Path) -> None
             publisher=publisher,
             accept_publication_policy=False,
             now=NOW,
+        )
+
+
+def test_status_and_revocation_resume_from_owner_only_state(tmp_path: Path) -> None:
+    connector, transport, signer, publisher = _fixture()
+    draft = _write_draft(tmp_path)
+    published = publish_draft(
+        connector,
+        draft_path=draft,
+        state_path=None,
+        signer=signer,
+        publisher=publisher,
+        accept_publication_policy=True,
+        now=NOW,
+    )
+    state = Path(published["statePath"])
+    transport.admission_state = "active"
+
+    active = publication_status(
+        connector,
+        state_path=state,
+        signer=signer,
+        publisher=publisher,
+    )
+    revoked = revoke_publication(
+        connector,
+        state_path=state,
+        signer=signer,
+        publisher=publisher,
+        reason_code="publisher-withdrawal",
+        now=NOW,
+    )
+    replay = revoke_publication(
+        connector,
+        state_path=state,
+        signer=signer,
+        publisher=publisher,
+        reason_code="publisher-withdrawal",
+        now=NOW,
+    )
+
+    assert active["admissionState"] == "active"
+    assert active["submissionRef"] == published["submissionRef"]
+    assert revoked["admissionState"] == "revoked"
+    assert replay["admissionState"] == "revoked"
+    assert transport.revocation_calls == 1
+
+
+def test_followup_rejects_symlinked_or_tampered_state(tmp_path: Path) -> None:
+    connector, _transport, signer, publisher = _fixture()
+    draft = _write_draft(tmp_path)
+    published = publish_draft(
+        connector,
+        draft_path=draft,
+        state_path=None,
+        signer=signer,
+        publisher=publisher,
+        accept_publication_policy=True,
+        now=NOW,
+    )
+    state = Path(published["statePath"])
+    link = tmp_path / "state-link.json"
+    link.symlink_to(state)
+    with pytest.raises(PublicationError, match="unsafe"):
+        publication_status(
+            connector,
+            state_path=link,
+            signer=signer,
+            publisher=publisher,
+        )
+
+    value = strict_json_loads(state.read_text(encoding="utf-8"))
+    value["publisher"]["generation"] = 2
+    state.write_bytes(canonical_json_bytes(value) + b"\n")
+    state.chmod(0o600)
+    with pytest.raises(PublicationError, match="current authority"):
+        publication_status(
+            connector,
+            state_path=state,
+            signer=signer,
+            publisher=publisher,
         )

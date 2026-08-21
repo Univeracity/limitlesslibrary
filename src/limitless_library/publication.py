@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import stat
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -10,11 +11,22 @@ from pathlib import Path
 from secrets import token_hex
 from typing import Any
 
-from .contracts import ContractError, load_json, sha256_json, write_new_json
-from .public_admission_contracts import build_contribution_policy_acceptance
+from .contracts import (
+    ContractError,
+    load_json,
+    sha256_json,
+    strict_json_loads,
+    write_new_json,
+)
+from .public_admission_contracts import (
+    PublicAdmissionContractError,
+    build_contribution_policy_acceptance,
+    build_public_release_revocation_request,
+)
 from .public_submission_contracts import (
     PublicSubmissionContractError,
     build_submission_intent,
+    public_submission_ref,
     validate_submission_intent,
 )
 from .service_connector import ServiceConnector, ServiceConnectorError
@@ -23,6 +35,9 @@ from .service_identity import InstallationSigner
 PUBLICATION_DRAFT_SCHEMA_VERSION = "limitless.publication-draft/1.0"
 PUBLICATION_STATE_SCHEMA_VERSION = "limitless.publication-state/1.0"
 MAX_PUBLICATION_DRAFT_BYTES = 64 * 1024
+MAX_PUBLICATION_STATE_BYTES = 128 * 1024
+_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_POLICY_REVISION = re.compile(r"^[A-Za-z][A-Za-z0-9._:-]{0,119}$")
 
 
 class PublicationError(ServiceConnectorError):
@@ -162,12 +177,10 @@ def _new_state(
     }
 
 
-def _state(
+def _saved_state(
     value: Any,
     *,
-    draft: dict[str, Any],
     service_id: str,
-    policy: dict[str, str],
     signer: InstallationSigner,
     publisher: dict[str, Any],
 ) -> dict[str, Any]:
@@ -183,12 +196,19 @@ def _state(
     if not isinstance(value, dict) or set(value) != fields:
         raise PublicationError("publication state has an unsupported shape")
     expected_publisher = {key: publisher[key] for key in ("publisherId", "authorityId", "keyId", "generation")}
+    stored_policy = value.get("publicationPolicy")
     if (
         value["schemaVersion"] != PUBLICATION_STATE_SCHEMA_VERSION
         or value["serviceId"] != service_id
-        or value["publicationPolicy"] != {"revision": policy["revision"], "digest": policy["digest"]}
-        or value["draftDigest"] != sha256_json(draft)
         or value["publisher"] != expected_publisher
+        or not isinstance(stored_policy, dict)
+        or set(stored_policy) != {"revision", "digest"}
+        or not isinstance(stored_policy["revision"], str)
+        or _POLICY_REVISION.fullmatch(stored_policy["revision"]) is None
+        or not isinstance(stored_policy["digest"], str)
+        or _DIGEST.fullmatch(stored_policy["digest"]) is None
+        or not isinstance(value.get("draftDigest"), str)
+        or _DIGEST.fullmatch(value["draftDigest"]) is None
         or not isinstance(value["sources"], list)
     ):
         raise PublicationError("publication state differs from current authority")
@@ -196,6 +216,11 @@ def _state(
         intent = validate_submission_intent(value["intent"], public_keys={signer.key_id: signer.public_bytes()})
     except PublicSubmissionContractError as error:
         raise PublicationError("publication state intent is invalid") from error
+    if (
+        intent["publisher"] != {key: expected_publisher[key] for key in ("publisherId", "authorityId", "keyId")}
+        or intent["rights"]["policyDigest"] != stored_policy["digest"]
+    ):
+        raise PublicationError("publication state intent is unbound")
     sources: list[dict[str, Any]] = []
     for item in value["sources"]:
         if (
@@ -210,6 +235,28 @@ def _state(
     if {(item["role"], item["digest"], item["byteLength"]) for item in sources} != declared:
         raise PublicationError("publication state sources differ from its intent")
     return {**value, "intent": intent, "sources": sources}
+
+
+def _state(
+    value: Any,
+    *,
+    draft: dict[str, Any],
+    service_id: str,
+    policy: dict[str, str],
+    signer: InstallationSigner,
+    publisher: dict[str, Any],
+) -> dict[str, Any]:
+    state = _saved_state(
+        value,
+        service_id=service_id,
+        signer=signer,
+        publisher=publisher,
+    )
+    if state["publicationPolicy"] != {"revision": policy["revision"], "digest": policy["digest"]} or state[
+        "draftDigest"
+    ] != sha256_json(draft):
+        raise PublicationError("publication state differs from current authority")
+    return state
 
 
 def publish_draft(
@@ -235,9 +282,10 @@ def publish_draft(
         raise PublicationError("publication draft is unavailable") from error
     if not stat.S_ISREG(draft_info.st_mode) or not 1 <= draft_info.st_size <= MAX_PUBLICATION_DRAFT_BYTES:
         raise PublicationError("publication draft is invalid")
-    selected_state = (
-        default_publication_state_path(selected_draft) if state_path is None else Path(state_path).resolve(strict=False)
-    )
+    configured_state = default_publication_state_path(selected_draft) if state_path is None else Path(state_path)
+    if configured_state.is_symlink():
+        raise PublicationError("publication state path is unsafe")
+    selected_state = configured_state.resolve(strict=False)
     if not selected_state.is_absolute():
         raise PublicationError("publication state path must be absolute")
     try:
@@ -253,18 +301,16 @@ def publish_draft(
         raise PublicationError("publication time is invalid")
     current = current.astimezone(UTC).replace(microsecond=0)
 
-    if selected_state.is_symlink():
-        raise PublicationError("publication state path is unsafe")
     if selected_state.exists():
         try:
-            state_info = selected_state.lstat()
-        except OSError as error:
-            raise PublicationError("publication state is unavailable") from error
-        if not stat.S_ISREG(state_info.st_mode) or (os.name == "posix" and stat.S_IMODE(state_info.st_mode) != 0o600):
-            raise PublicationError("publication state path is unsafe")
-        try:
+            _selected, saved = _load_publication_state(
+                selected_state,
+                service_id=connector.profile.service_id,
+                signer=signer,
+                publisher=publisher,
+            )
             prepared = _state(
-                load_json(selected_state),
+                saved,
                 draft=draft,
                 service_id=connector.profile.service_id,
                 policy=policy,
@@ -335,4 +381,172 @@ def publish_draft(
             {key: item[key] for key in ("role", "digest", "byteLength", "disposition")} for item in uploaded
         ],
         "statePath": str(selected_state),
+    }
+
+
+def _load_publication_state(
+    state_path: Path,
+    *,
+    service_id: str,
+    signer: InstallationSigner,
+    publisher: dict[str, Any],
+) -> tuple[Path, dict[str, Any]]:
+    configured = Path(state_path)
+    selected = configured if configured.is_absolute() else Path.cwd() / configured
+    descriptor: int | None = None
+    try:
+        before = selected.lstat()
+        if (
+            stat.S_ISLNK(before.st_mode)
+            or not stat.S_ISREG(before.st_mode)
+            or os.name == "posix"
+            and stat.S_IMODE(before.st_mode) != 0o600
+            or not 1 <= before.st_size <= MAX_PUBLICATION_STATE_BYTES
+        ):
+            raise PublicationError("publication state path is unsafe")
+        descriptor = os.open(
+            selected,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+        current = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(current.st_mode)
+            or current.st_size != before.st_size
+            or current.st_dev != before.st_dev
+            or current.st_ino != before.st_ino
+        ):
+            raise PublicationError("publication state changed or is invalid")
+        encoded = bytearray()
+        while len(encoded) <= MAX_PUBLICATION_STATE_BYTES:
+            chunk = os.read(
+                descriptor,
+                min(64 * 1024, MAX_PUBLICATION_STATE_BYTES + 1 - len(encoded)),
+            )
+            if not chunk:
+                break
+            encoded.extend(chunk)
+        after = os.fstat(descriptor)
+        if len(encoded) != current.st_size or after.st_size != current.st_size:
+            raise PublicationError("publication state changed or is invalid")
+        value = strict_json_loads(bytes(encoded).decode("utf-8"))
+    except PublicationError:
+        raise
+    except (OSError, UnicodeError, ValueError) as error:
+        raise PublicationError("publication state is invalid") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    return selected.resolve(strict=True), _saved_state(
+        value,
+        service_id=service_id,
+        signer=signer,
+        publisher=publisher,
+    )
+
+
+def _followup_status(
+    connector: ServiceConnector,
+    *,
+    state_path: Path,
+    signer: InstallationSigner,
+    publisher: dict[str, Any],
+) -> tuple[Path, dict[str, Any], dict[str, Any]]:
+    if not isinstance(connector, ServiceConnector) or not isinstance(signer, InstallationSigner):
+        raise PublicationError("publication authority is invalid")
+    selected, state = _load_publication_state(
+        state_path,
+        service_id=connector.profile.service_id,
+        signer=signer,
+        publisher=publisher,
+    )
+    intent = state["intent"]
+    reference = public_submission_ref(
+        tenant_id=publisher["authorityId"],
+        publisher_id=publisher["publisherId"],
+        request_id=intent["requestId"],
+    )
+    status = connector.submission_status(reference)
+    return selected, state, status
+
+
+def publication_status(
+    connector: ServiceConnector,
+    *,
+    state_path: Path,
+    signer: InstallationSigner,
+    publisher: dict[str, Any],
+) -> dict[str, Any]:
+    """Inspect one prepared publication without resending its source bytes."""
+
+    selected, _state_value, status = _followup_status(
+        connector,
+        state_path=state_path,
+        signer=signer,
+        publisher=publisher,
+    )
+    return {
+        "schemaVersion": "limitless.publication-status-result/1.0",
+        "submissionRef": status["submissionRef"],
+        "admissionState": status["state"],
+        "releaseRef": status["releaseRef"],
+        "reasonCodes": status["reasonCodes"],
+        "generation": status["generation"],
+        "updatedAt": status["updatedAt"],
+        "statePath": str(selected),
+    }
+
+
+def revoke_publication(
+    connector: ServiceConnector,
+    *,
+    state_path: Path,
+    signer: InstallationSigner,
+    publisher: dict[str, Any],
+    reason_code: str,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Withdraw the active release bound to one prepared publication."""
+
+    selected, _state_value, status = _followup_status(
+        connector,
+        state_path=state_path,
+        signer=signer,
+        publisher=publisher,
+    )
+    if status["state"] == "revoked":
+        revoked = status
+    else:
+        release = status["releaseRef"]
+        if status["state"] != "active" or release is None:
+            raise PublicationError("only an active publication can be revoked")
+        current = datetime.now(tz=UTC) if now is None else now
+        if not isinstance(current, datetime) or current.tzinfo is None:
+            raise PublicationError("publication revocation time is invalid")
+        try:
+            request = build_public_release_revocation_request(
+                signer=signer,
+                service_id=connector.profile.service_id,
+                publisher_id=publisher["publisherId"],
+                authority_id=publisher["authorityId"],
+                submission_ref=status["submissionRef"],
+                release_id=release["releaseId"],
+                reason_code=reason_code,
+                request_id="request:publication-revocation-" + token_hex(16),
+                issued_at=current,
+            )
+        except PublicAdmissionContractError as error:
+            raise PublicationError("publication revocation input is invalid") from error
+        revoked = connector.revoke_submission_release(
+            request,
+            publisher_public_key=signer.public_bytes(),
+        )
+    return {
+        "schemaVersion": "limitless.publication-revocation-result/1.0",
+        "submissionRef": revoked["submissionRef"],
+        "admissionState": revoked["state"],
+        "releaseRef": revoked["releaseRef"],
+        "reasonCodes": revoked["reasonCodes"],
+        "generation": revoked["generation"],
+        "updatedAt": revoked["updatedAt"],
+        "statePath": str(selected),
     }

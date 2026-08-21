@@ -205,6 +205,13 @@ limitless service-query \
 limitless service-publish \
   --draft ./examples/publication/publication.draft.json \
   --accept-publication-policy
+
+# Follow the saved state path returned by publication:
+limitless service-publication-status \
+  --state ./examples/publication/publication.draft.json.state.json
+
+limitless service-publication-revoke \
+  --state ./examples/publication/publication.draft.json.state.json
 ```
 
 Source builds without a published locator remain local-only; this repository
@@ -225,7 +232,9 @@ rather than the current directory, and prepares a signed, resumable local
 state file before network transfer. It accepts the exact advertised policy only
 with the command-line confirmation above, negotiates digests first, streams
 only missing bytes, retries the immutable submission, and returns its admission
-state. It does not scan or upload a workspace. See the
+state. The same owner-only state supports later status inspection and explicit
+withdrawal without retaining credentials in the draft or command line. It does
+not scan or upload a workspace. See the
 [managed-service connector](docs/MANAGED-SERVICE.md).
 
 ## Authoring

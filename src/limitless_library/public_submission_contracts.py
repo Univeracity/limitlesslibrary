@@ -653,6 +653,37 @@ def build_submission_plan(
     )
 
 
+def public_submission_ref(
+    *,
+    tenant_id: str,
+    publisher_id: str,
+    request_id: str,
+) -> str:
+    """Derive the service-neutral identity for one publisher request."""
+
+    binding = {
+        "tenantId": _text(
+            tenant_id,
+            "public submission tenantId",
+            maximum=200,
+            pattern=_IDENTIFIER,
+        ),
+        "publisherId": _text(
+            publisher_id,
+            "public submission publisherId",
+            maximum=200,
+            pattern=_IDENTIFIER,
+        ),
+        "requestId": _text(
+            request_id,
+            "public submission requestId",
+            maximum=128,
+            pattern=_REQUEST,
+        ),
+    }
+    return "submission:" + sha256_json(binding)[7:39]
+
+
 def validate_content_transfer_grant(
     value: Any,
     *,

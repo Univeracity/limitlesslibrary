@@ -146,6 +146,20 @@ release with an official locator and an operating service; source builds remain
 local-only. The open client validates the public wire lifecycle but does not
 contain the private admission engine, ranking service, or managed storage.
 
+The returned owner-only state is also the durable handle for follow-up:
+
+```bash
+limitless service-publication-status --state ./publication.draft.json.state.json
+limitless service-publication-revoke --state ./publication.draft.json.state.json
+```
+
+Status derives the submission identity from the signed publisher request; it
+does not resend content. Revocation first resolves the publisher-visible active
+release, then signs a short-lived withdrawal with the current installation key.
+An already revoked release returns its existing state without creating another
+withdrawal request. Pending, quarantined, rejected, or retired work cannot be
+misrepresented as an active release eligible for withdrawal.
+
 ## Advanced alternate profiles
 
 Operators building another compatible service can bypass the official

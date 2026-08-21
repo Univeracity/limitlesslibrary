@@ -18,7 +18,12 @@ from .official_service import (
     activated_service_profile,
     activation_details,
 )
-from .publication import PublicationError, publish_draft
+from .publication import (
+    PublicationError,
+    publication_status,
+    publish_draft,
+    revoke_publication,
+)
 from .sandbox import containment_readiness
 from .service_connector import (
     ServiceConnector,
@@ -139,6 +144,23 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="confirm review and acceptance of the service-advertised policy",
     )
+
+    publication_status_parser = subparsers.add_parser(
+        "service-publication-status",
+        help="inspect admission for one locally prepared publication",
+    )
+    publication_status_parser.add_argument("--state", type=Path, required=True)
+
+    publication_revoke = subparsers.add_parser(
+        "service-publication-revoke",
+        help="withdraw the active release for one locally prepared publication",
+    )
+    publication_revoke.add_argument("--state", type=Path, required=True)
+    publication_revoke.add_argument(
+        "--reason-code",
+        default="publisher-withdrawal",
+        help="non-sensitive machine-readable withdrawal reason",
+    )
     service_query.add_argument("--request", type=Path)
     service_query.add_argument("--objective")
     service_query.add_argument("--receiver", type=Path)
@@ -258,6 +280,28 @@ def main() -> None:
                     accept_publication_policy=args.accept_publication_policy,
                 )
             )
+        elif args.command in {
+            "service-publication-status",
+            "service-publication-revoke",
+        }:
+            connector = activated_service_connector()
+            signer, publisher = installation_publisher_authority(service_id=connector.profile.service_id)
+            if args.command == "service-publication-status":
+                result = publication_status(
+                    connector,
+                    state_path=args.state,
+                    signer=signer,
+                    publisher=publisher,
+                )
+            else:
+                result = revoke_publication(
+                    connector,
+                    state_path=args.state,
+                    signer=signer,
+                    publisher=publisher,
+                    reason_code=args.reason_code,
+                )
+            _print(result)
         elif args.command == "seal-capsule":
             write_new_json(args.output, seal_capsule(load_json(args.draft), args.root))
         elif args.command == "seal-recipe":
