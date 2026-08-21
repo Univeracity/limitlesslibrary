@@ -50,9 +50,12 @@ text for clients that consume text content. Artifact bytes never cross MCP.
 The optional service connector uses the versioned public records implemented
 in `limitless_library.service_contracts`:
 
-- `limitless.service-query/1.0`;
-- `limitless.service-query-result/1.0` and `1.1`;
-- `limitless.service-discovery/1.0`;
+- current query `limitless.service-query/1.1`, with validation-only `1.0`
+  compatibility;
+- current result `limitless.service-query-result/1.3`, with validation-only
+  `1.0`–`1.2` compatibility;
+- current discovery `limitless.service-discovery/1.1`, with `1.0`
+  compatibility;
 - `limitless.service-root-key-transition/1.0` and its bounded set;
 - `limitless.service-profile/1.1`, official-service locator `1.0`, and local
   activation state `1.0`;

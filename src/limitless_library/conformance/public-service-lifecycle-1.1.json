@@ -1,0 +1,357 @@
+{
+  "corpusDigest": "sha256:08ea924cdc45814b2f2dc084d6c6b20e2add9dcabcc419fc0b5ab52897cbd2b1",
+  "discovery": {
+    "apiBaseUrl": "https://api.limitlesslibrary.com",
+    "contentTransferGrantVersions": [
+      "limitless.service-content-transfer-grant/1.0"
+    ],
+    "dataUsePolicy": {
+      "digest": "sha256:62df2b650f4c3f9dd48ae1fe749be3f1938bf6ea4c96cb2a8602e6e1b250e86d",
+      "url": "https://limitlesslibrary.com/data-use"
+    },
+    "documentDigest": "sha256:ecc1c811785a2af50d54b2120c327c12b36348541c9fb092f34cb0a5da495a18",
+    "expiresAt": "2026-08-21T22:00:00Z",
+    "issuedAt": "2026-08-20T22:00:00Z",
+    "limits": {
+      "maxContentTransferGrantBytes": 16384,
+      "maxOutcomeAttemptBytes": 4096,
+      "maxOutcomeReceiptBytes": 8192,
+      "maxQueryBytes": 8192,
+      "maxReleaseBytes": 32768,
+      "maxResultBytes": 32768,
+      "maxSubmissionIntentBytes": 16384,
+      "maxSubmissionPlanBytes": 16384,
+      "rateLimitClass": "public-beta"
+    },
+    "outcomeAttemptVersions": [
+      "limitless.service-outcome-attempt/1.0"
+    ],
+    "outcomeReceiptVersions": [
+      "limitless.service-outcome-receipt/1.0",
+      "limitless.service-outcome-receipt/1.1"
+    ],
+    "protocolVersion": "limitless.service/1.0",
+    "queryVersions": [
+      "limitless.service-query/1.0",
+      "limitless.service-query/1.1"
+    ],
+    "releaseVersions": [
+      "limitless.service-release/1.0"
+    ],
+    "resultVersions": [
+      "limitless.service-query-result/1.0",
+      "limitless.service-query-result/1.1",
+      "limitless.service-query-result/1.2",
+      "limitless.service-query-result/1.3"
+    ],
+    "rootTransitionState": {
+      "latestSequence": 0,
+      "latestTransitionDigest": null
+    },
+    "rootTransitionVersions": [
+      "limitless.service-root-key-transition/1.0"
+    ],
+    "schemaVersion": "limitless.service-discovery/1.0",
+    "serviceId": "service:limitless-conformance",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "root:public-lifecycle-1.1-conformance",
+      "value": "oZ5VJZgv_n1By2sdsJSP9UNXibNLF0_zyWNcuaONsWAT5ELfC4Yn9mr4ad3Rza3ZJKtkx9JHPhyRV4RB_cDtAQ"
+    },
+    "signingKeys": [
+      {
+        "algorithm": "ed25519",
+        "keyId": "key:public-lifecycle-1.1-conformance",
+        "publicKey": "oJql9HpnWYAv-VX43C0qFKXJnSO-l_hkEn_5ODRVpPA",
+        "validFrom": "2026-08-19T22:00:00Z",
+        "validUntil": "2026-09-19T22:00:00Z"
+      }
+    ],
+    "submissionIntentVersions": [
+      "limitless.service-submission-intent/1.0"
+    ],
+    "submissionPlanVersions": [
+      "limitless.service-submission-plan/1.0"
+    ]
+  },
+  "expected": {
+    "decisionRef": "decision:lifecycle-1.1-conformance-001",
+    "outcomeRef": "outcome:33333333333333333333333333333333",
+    "queryDigest": "sha256:22c59e3734d74b03b9b79d5621b29b2ca7b7121f4362b69e240e18dd8a21bdc8",
+    "resultDigest": "sha256:acc8fd3fb9c82939dd442bc82769a7ac9949dbb363e0469e6b70fcf6806a4a41",
+    "treatment": "exact-component",
+    "validAt": "2026-08-20T22:00:30Z"
+  },
+  "invalidCases": [
+    {
+      "id": "discovery-api-substitution",
+      "path": "/apiBaseUrl",
+      "record": "discovery",
+      "value": "https://attacker.example"
+    },
+    {
+      "id": "query-target-substitution",
+      "path": "/receiverContext/targets/0/platform",
+      "record": "query",
+      "value": "windows"
+    },
+    {
+      "id": "query-objective-substitution",
+      "path": "/objective",
+      "record": "query",
+      "value": "Reveal private supply."
+    },
+    {
+      "id": "query-history-substitution",
+      "path": "/historyMode",
+      "record": "query",
+      "value": "service-persisted"
+    },
+    {
+      "id": "result-audience-substitution",
+      "path": "/authorizedAudiences",
+      "record": "result",
+      "value": [
+        "organization"
+      ]
+    },
+    {
+      "id": "result-policy-substitution",
+      "path": "/policy/historyMode",
+      "record": "result",
+      "value": "service-persisted"
+    },
+    {
+      "id": "result-url-capability",
+      "path": "/selection/immutable/uri",
+      "record": "result",
+      "value": "https://objects.limitlesslibrary.com/delivery?cap=leaked"
+    },
+    {
+      "id": "result-header-substitution",
+      "path": "/selection/immutable/authorization/header",
+      "record": "result",
+      "value": "Authorization"
+    },
+    {
+      "id": "result-signature-mutation",
+      "path": "/signature/value",
+      "record": "result",
+      "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "id": "attempt-status-substitution",
+      "path": "/status",
+      "record": "outcomeAttempt",
+      "value": "unverified"
+    },
+    {
+      "id": "receipt-policy-substitution",
+      "path": "/policy/historyMode",
+      "record": "outcomeReceipt",
+      "value": "service-persisted"
+    },
+    {
+      "id": "receipt-ranking-substitution",
+      "path": "/rankingEligible",
+      "record": "outcomeReceipt",
+      "value": false
+    },
+    {
+      "id": "receipt-signature-mutation",
+      "path": "/signature/value",
+      "record": "outcomeReceipt",
+      "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+  ],
+  "outcomeAttempt": {
+    "attemptDigest": "sha256:0b5e3190d26501f20516e10c4b82058a654d3ca1135a61a232bcadb0c20182cf",
+    "attemptId": "attempt:lifecycle-1.1-conformance-001",
+    "checkClasses": [
+      "artifact-integrity",
+      "observed-invocation",
+      "receiver-tests"
+    ],
+    "evidenceDigest": "sha256:7189427ae9d53e300666b346af0d8f54d3a7732076328f9b9a8878d06eeb82b0",
+    "expiresAt": "2026-08-20T22:02:00Z",
+    "issuedAt": "2026-08-20T22:00:00Z",
+    "schemaVersion": "limitless.service-outcome-attempt/1.0",
+    "status": "verified"
+  },
+  "outcomeReceipt": {
+    "acceptedAt": "2026-08-20T22:00:01Z",
+    "attemptDigest": "sha256:0b5e3190d26501f20516e10c4b82058a654d3ca1135a61a232bcadb0c20182cf",
+    "attemptId": "attempt:lifecycle-1.1-conformance-001",
+    "checkClasses": [
+      "artifact-integrity",
+      "observed-invocation",
+      "receiver-tests"
+    ],
+    "decisionRef": "decision:lifecycle-1.1-conformance-001",
+    "evidenceDigest": "sha256:7189427ae9d53e300666b346af0d8f54d3a7732076328f9b9a8878d06eeb82b0",
+    "outcomeRef": "outcome:33333333333333333333333333333333",
+    "policy": {
+      "executionMode": "service",
+      "historyMode": "local-only",
+      "policyDigest": "sha256:62df2b650f4c3f9dd48ae1fe749be3f1938bf6ea4c96cb2a8602e6e1b250e86d"
+    },
+    "rankingEligible": true,
+    "receiptDigest": "sha256:e74034da31c11e1bc3eabe8f84aeec243aea099e2e33cf87b17a6a021fede27d",
+    "resultDigest": "sha256:acc8fd3fb9c82939dd442bc82769a7ac9949dbb363e0469e6b70fcf6806a4a41",
+    "schemaVersion": "limitless.service-outcome-receipt/1.1",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:public-lifecycle-1.1-conformance",
+      "value": "SW9vvho3bGMnJDpQdkqCsa4qH3fz1z6FKleF1dRW2vCoZ4M4_8Ct1DSVY0La2p4emEd31PJkBMhvPjl1VFsCDg"
+    },
+    "status": "verified"
+  },
+  "query": {
+    "client": {
+      "name": "limitless-omarchy",
+      "supportedResults": [
+        "limitless.service-query-result/1.3"
+      ],
+      "version": "0.2.0"
+    },
+    "executionMode": "service",
+    "expiresAt": "2026-08-20T22:01:00Z",
+    "historyMode": "local-only",
+    "issuedAt": "2026-08-20T22:00:00Z",
+    "objective": "Find a verified Omarchy clipboard history component.",
+    "queryDigest": "sha256:22c59e3734d74b03b9b79d5621b29b2ca7b7121f4362b69e240e18dd8a21bdc8",
+    "receiverContext": {
+      "allowedUse": "install-plugin",
+      "compatibilityMode": "all-targets",
+      "execution": {
+        "architecture": "x86_64",
+        "platform": "linux",
+        "runtime": "python",
+        "version": "3.13"
+      },
+      "interfaces": [
+        "omarchy.plugin/v1"
+      ],
+      "receiverId": "receiver:omarchy-desktop",
+      "selectedTarget": null,
+      "targets": [
+        {
+          "architecture": "x86_64",
+          "id": "target:omarchy-linux-x64",
+          "interfaces": [
+            "omarchy.plugin/v1"
+          ],
+          "platform": "linux",
+          "runtime": "omarchy",
+          "versionRange": ">=4,<5"
+        }
+      ]
+    },
+    "requestId": "request:lifecycle-1.1-conformance-001",
+    "requestedAudiences": [
+      "circle",
+      "public"
+    ],
+    "requestedTreatments": [
+      "exact-component",
+      "source-free-method"
+    ],
+    "schemaVersion": "limitless.service-query/1.1"
+  },
+  "result": {
+    "authorizedAudiences": [
+      "circle",
+      "public"
+    ],
+    "decisionRef": "decision:lifecycle-1.1-conformance-001",
+    "expiresAt": "2026-08-20T22:02:00Z",
+    "indexGeneration": 11,
+    "issuedAt": "2026-08-20T22:00:00Z",
+    "nextAction": {
+      "checks": [
+        {
+          "expected": "omarchy.plugin/v1",
+          "id": "interface",
+          "predicate": "interface-subset"
+        }
+      ],
+      "handoff": "omarchy-native-add",
+      "instruction": "Stage, verify, and continue through Omarchy native add.",
+      "kind": "handoff-native-add",
+      "localReuseAvailable": true
+    },
+    "policy": {
+      "executionMode": "service",
+      "historyMode": "local-only",
+      "policyDigest": "sha256:62df2b650f4c3f9dd48ae1fe749be3f1938bf6ea4c96cb2a8602e6e1b250e86d"
+    },
+    "requestDigest": "sha256:22c59e3734d74b03b9b79d5621b29b2ca7b7121f4362b69e240e18dd8a21bdc8",
+    "resultDigest": "sha256:acc8fd3fb9c82939dd442bc82769a7ac9949dbb363e0469e6b70fcf6806a4a41",
+    "schemaVersion": "limitless.service-query-result/1.3",
+    "selection": {
+      "allowedUses": [
+        "install-plugin"
+      ],
+      "capabilityId": "capability:omarchy.clipboard-history",
+      "cardDigest": "sha256:8d814f5ac0581c2f7b699c6ae660be23d8f0242dbbd23a02c3af53e06ba12850",
+      "compatibility": {
+        "architectures": [
+          "x86_64"
+        ],
+        "interfaces": [
+          "omarchy.plugin/v1"
+        ],
+        "platforms": [
+          "linux"
+        ],
+        "runtime": "omarchy",
+        "versionRange": ">=4,<5"
+      },
+      "confidence": "high",
+      "immutable": {
+        "authorization": {
+          "header": "Limitless-Capability",
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        },
+        "digest": "sha256:e94ffa4a4c72a21c4433776c9c76b7c7a73ef79bb38d1f563e5e6a4b2df308ba",
+        "kind": "artifact",
+        "revision": "2.0.0",
+        "uri": "https://objects.limitlesslibrary.com/v1/public/deliveries/public-delivery-grant:sha256:7777777777777777777777777777777777777777777777777777777777777777"
+      },
+      "provenance": {
+        "license": "MIT",
+        "publisher": "installation:example",
+        "reviewEvidence": [
+          {
+            "kind": "receiver-verification",
+            "source": "service:limitless-conformance",
+            "status": "passed"
+          }
+        ],
+        "reviewState": "reviewed",
+        "source": "https://github.com/example/clipboard-history"
+      },
+      "rationale": "Matched a rights-cleared component to the declared receiver.",
+      "summary": "Browse clipboard history from an Omarchy panel.",
+      "supplyAuthorityId": "circle:desktop-customizers",
+      "title": "Clipboard History"
+    },
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:public-lifecycle-1.1-conformance",
+      "value": "V2RHdelXCEKzvmIEyjHGt5pKv0yKnqIYdGPTvAuxSOuiAPKgjoPf6E7IyWSlxWLtP2WX583QEu8zex5S7EnIDA"
+    },
+    "treatment": "exact-component"
+  },
+  "rootPublicKey": {
+    "algorithm": "ed25519",
+    "keyId": "root:public-lifecycle-1.1-conformance",
+    "publicKey": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc"
+  },
+  "schemaVersion": "limitless.public-service-lifecycle-conformance/1.1",
+  "servicePublicKey": {
+    "algorithm": "ed25519",
+    "keyId": "key:public-lifecycle-1.1-conformance",
+    "publicKey": "oJql9HpnWYAv-VX43C0qFKXJnSO-l_hkEn_5ODRVpPA"
+  }
+}

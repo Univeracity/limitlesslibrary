@@ -18,14 +18,31 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .contracts import ContractError
 
-DATA_USE_MODES = ("standard", "history", "organization", "private")
+DATA_USE_MODES = ("standard", "history", "organization", "confidential")
 QUERY_SCOPES = ("public", "organization", "exchange", "private")
 TREATMENT_CLASSES = ("exact-component", "source-free-method")
 
-SUBMISSION_INTENT_SCHEMA_VERSION = "limitless.service-submission-intent/1.0"
+SUBMISSION_INTENT_SCHEMA_VERSION_1_0 = "limitless.service-submission-intent/1.0"
+SUBMISSION_INTENT_SCHEMA_VERSION = "limitless.service-submission-intent/1.1"
+SUBMISSION_INTENT_SCHEMA_VERSIONS = (
+    SUBMISSION_INTENT_SCHEMA_VERSION_1_0,
+    SUBMISSION_INTENT_SCHEMA_VERSION,
+)
 SUBMISSION_PLAN_SCHEMA_VERSION = "limitless.service-submission-plan/1.0"
 CONTENT_TRANSFER_GRANT_SCHEMA_VERSION = "limitless.service-content-transfer-grant/1.0"
-IMMUTABLE_RELEASE_SCHEMA_VERSION = "limitless.service-release/1.0"
+IMMUTABLE_RELEASE_SCHEMA_VERSION_1_0 = "limitless.service-release/1.0"
+IMMUTABLE_RELEASE_SCHEMA_VERSION = "limitless.service-release/1.1"
+IMMUTABLE_RELEASE_SCHEMA_VERSIONS = (
+    IMMUTABLE_RELEASE_SCHEMA_VERSION_1_0,
+    IMMUTABLE_RELEASE_SCHEMA_VERSION,
+)
+CONTRIBUTION_POLICY_ACCEPTANCE_SCHEMA_VERSION = (
+    "limitless.contribution-policy-acceptance/1.0"
+)
+PUBLIC_ADMISSION_STATUS_SCHEMA_VERSION = "limitless.public-admission-status/1.0"
+PUBLIC_RELEASE_REVOCATION_SCHEMA_VERSION = (
+    "limitless.public-release-revocation-request/1.0"
+)
 MAX_INTENT_BYTES = 16 * 1024
 MAX_PLAN_BYTES = 16 * 1024
 MAX_CONTENT_TRANSFER_GRANT_BYTES = 16 * 1024
@@ -204,7 +221,12 @@ def validate_next_action(
         handoff = _text(action["handoff"], "nextAction handoff", maximum=40)
         checks = _checks(action["checks"])
         if (
-            handoff not in {"library-install", "provider-native-add"}
+            handoff
+            not in {
+                "library-install",
+                "provider-native-add",
+                "omarchy-native-add",
+            }
             or any(item["predicate"] == "digest-equals" for item in checks)
             or action["localReuseAvailable"] is not True
         ):

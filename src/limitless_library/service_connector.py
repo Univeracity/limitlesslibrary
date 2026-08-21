@@ -41,6 +41,9 @@ from .service_contracts import (
     SERVICE_QUERY_SCHEMA_VERSION,
     active_result_keys,
     build_service_query,
+    service_query_audiences,
+    service_query_execution_mode,
+    service_query_history_mode,
     validate_service_discovery,
     validate_service_profile,
     validate_service_query,
@@ -538,9 +541,13 @@ class ServiceConnector:
             checked_query = validate_service_query(query, at=now)
         except ValueError as error:
             raise ServiceConnectorError("service query is invalid") from error
-        if checked_query["dataUseMode"] != self.profile.legacy_data_use_mode or not set(
-            checked_query["requestedScopes"]
-        ).issubset(set(self.profile.legacy_requested_scopes)):
+        if (
+            service_query_execution_mode(checked_query) != self.profile.execution_mode
+            or service_query_history_mode(checked_query) != self.profile.history_mode
+            or not set(service_query_audiences(checked_query)).issubset(
+                set(self.profile.requested_audiences)
+            )
+        ):
             raise ServiceConnectorError("service query exceeds the opted-in profile")
         maximum = min(
             MAX_RESULT_BYTES,
@@ -585,9 +592,10 @@ class ServiceConnector:
             request_id=request_id,
             objective=objective,
             receiver_context=receiver_context,
-            requested_scopes=self.profile.legacy_requested_scopes,
+            requested_audiences=self.profile.requested_audiences,
             requested_treatments=requested_treatments,
-            data_use_mode=self.profile.legacy_data_use_mode,
+            execution_mode=self.profile.execution_mode,
+            history_mode=self.profile.history_mode,
             client_name="limitless-library-python",
             client_version="0.1.0a0",
             issued_at=issued_at or self._now(),

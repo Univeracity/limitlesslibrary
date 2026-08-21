@@ -21,8 +21,11 @@ from limitless_library.service_contracts import (
     validate_service_query_result,
 )
 
-CORPUS_PATH = Path(str(files("limitless_library.conformance").joinpath("public-service-lifecycle-1.0.json")))
-CORPUS_SCHEMA_VERSION = "limitless.public-service-lifecycle-conformance/1.0"
+CORPUS_PATH = Path(str(files("limitless_library.conformance").joinpath("public-service-lifecycle-1.1.json")))
+LEGACY_CORPUS_PATH = Path(
+    str(files("limitless_library.conformance").joinpath("public-service-lifecycle-1.0.json"))
+)
+CORPUS_SCHEMA_VERSION = "limitless.public-service-lifecycle-conformance/1.1"
 
 
 def _decode(value: str) -> bytes:
@@ -118,6 +121,22 @@ class PublicServiceLifecycleConformanceTests(unittest.TestCase):
         self.assertEqual(expected["resultDigest"], checked_receipt["resultDigest"])
         self.assertEqual(checked_attempt["attemptDigest"], checked_receipt["attemptDigest"])
         self.assertEqual(expected["outcomeRef"], checked_receipt["outcomeRef"])
+
+    def test_legacy_lifecycle_remains_validation_compatible(self) -> None:
+        corpus = load_json(LEGACY_CORPUS_PATH)
+        self.assertEqual(
+            corpus["corpusDigest"],
+            sha256_json(
+                {
+                    key: item
+                    for key, item in corpus.items()
+                    if key != "corpusDigest"
+                }
+            ),
+        )
+        at = datetime.fromisoformat(corpus["expected"]["validAt"]).astimezone(UTC)
+        for name in ("discovery", "query", "result", "outcomeAttempt", "outcomeReceipt"):
+            self._validate_record(name, corpus[name], corpus=corpus, at=at)
 
     def test_declared_lifecycle_mutations_fail_closed(self) -> None:
         corpus = self._corpus()

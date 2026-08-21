@@ -21,3 +21,5 @@
   packaged language-neutral conformance corpora.
 - One-action official-service activation with release-pinned locator trust,
   credential-free local state, local fallback, and advanced alternate profiles.
+- Current execution/audience/history query and result contracts, including
+  circle vocabulary, header-carried delivery authority, and legacy validation.

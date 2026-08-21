@@ -18,14 +18,17 @@ from cryptography.exceptions import InvalidSignature
 
 from ._service_support import (
     CONTENT_TRANSFER_GRANT_SCHEMA_VERSION,
+    CONTRIBUTION_POLICY_ACCEPTANCE_SCHEMA_VERSION,
     DATA_USE_MODES,
-    IMMUTABLE_RELEASE_SCHEMA_VERSION,
+    IMMUTABLE_RELEASE_SCHEMA_VERSIONS,
     MAX_CONTENT_TRANSFER_GRANT_BYTES,
     MAX_INTENT_BYTES,
     MAX_PLAN_BYTES,
     MAX_RELEASE_BYTES,
+    PUBLIC_ADMISSION_STATUS_SCHEMA_VERSION,
+    PUBLIC_RELEASE_REVOCATION_SCHEMA_VERSION,
     QUERY_SCOPES,
-    SUBMISSION_INTENT_SCHEMA_VERSION,
+    SUBMISSION_INTENT_SCHEMA_VERSIONS,
     SUBMISSION_PLAN_SCHEMA_VERSION,
     TREATMENT_CLASSES,
     DecisionSigningAuthority,
@@ -34,25 +37,38 @@ from ._service_support import (
     validate_next_action,
     version_range_covers,
 )
-from .contracts import (
-    ContractError as ControlPlaneContractError,
-)
-from .contracts import (
-    canonical_json_bytes,
-    parse_utc,
-    sha256_json,
-)
+from .contracts import ContractError as ControlPlaneContractError
+from .contracts import canonical_json_bytes, parse_utc, sha256_json
 
-SERVICE_DISCOVERY_SCHEMA_VERSION = "limitless.service-discovery/1.0"
-SERVICE_QUERY_SCHEMA_VERSION = "limitless.service-query/1.0"
+SERVICE_DISCOVERY_SCHEMA_VERSION_1_0 = "limitless.service-discovery/1.0"
+SERVICE_DISCOVERY_SCHEMA_VERSION = "limitless.service-discovery/1.1"
+SERVICE_DISCOVERY_SCHEMA_VERSIONS = (
+    SERVICE_DISCOVERY_SCHEMA_VERSION_1_0,
+    SERVICE_DISCOVERY_SCHEMA_VERSION,
+)
+SERVICE_QUERY_SCHEMA_VERSION_1_0 = "limitless.service-query/1.0"
+SERVICE_QUERY_SCHEMA_VERSION = "limitless.service-query/1.1"
+SERVICE_QUERY_SCHEMA_VERSIONS = (
+    SERVICE_QUERY_SCHEMA_VERSION_1_0,
+    SERVICE_QUERY_SCHEMA_VERSION,
+)
 SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_0 = "limitless.service-query-result/1.0"
-SERVICE_QUERY_RESULT_SCHEMA_VERSION = "limitless.service-query-result/1.1"
+SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_1 = "limitless.service-query-result/1.1"
+SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2 = "limitless.service-query-result/1.2"
+SERVICE_QUERY_RESULT_SCHEMA_VERSION = "limitless.service-query-result/1.3"
 SERVICE_QUERY_RESULT_SCHEMA_VERSIONS = (
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_0,
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_1,
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION,
 )
 SERVICE_OUTCOME_ATTEMPT_SCHEMA_VERSION = "limitless.service-outcome-attempt/1.0"
-SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION = "limitless.service-outcome-receipt/1.0"
+SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION_1_0 = "limitless.service-outcome-receipt/1.0"
+SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION = "limitless.service-outcome-receipt/1.1"
+SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSIONS = (
+    SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION_1_0,
+    SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION,
+)
 SERVICE_ROOT_KEY_TRANSITION_SCHEMA_VERSION = "limitless.service-root-key-transition/1.0"
 SERVICE_ROOT_KEY_TRANSITION_SET_SCHEMA_VERSION = "limitless.service-root-key-transition-set/1.0"
 SERVICE_PROFILE_SCHEMA_VERSION_1_0 = "limitless.service-profile/1.0"
@@ -100,6 +116,18 @@ OUTCOME_STATUSES = frozenset({"verified", "failed", "abstained-in-use"})
 EXECUTION_MODES = ("local", "service")
 PUBLIC_AUDIENCES = ("private", "circle", "organization", "public")
 HISTORY_MODES = ("local-only", "service-persisted")
+_LEGACY_RESULT_VERSIONS = (
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_0,
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_1,
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
+)
+_LEGACY_TO_AUDIENCE = {
+    "private": "private",
+    "exchange": "circle",
+    "organization": "organization",
+    "public": "public",
+}
+_AUDIENCE_TO_LEGACY = {value: key for key, value in _LEGACY_TO_AUDIENCE.items()}
 OUTCOME_CHECK_CLASSES = frozenset(
     {
         "artifact-integrity",
@@ -181,6 +209,79 @@ def _positive_int(value: Any, field: str, *, maximum: int) -> int:
     return value
 
 
+def _execution_mode(value: Any, field: str) -> str:
+    mode = _text(value, field, maximum=16)
+    if mode not in EXECUTION_MODES:
+        raise PublicServiceContractError(f"{field} is invalid")
+    return mode
+
+
+def _history_mode(value: Any, field: str) -> str:
+    mode = _text(value, field, maximum=24)
+    if mode not in HISTORY_MODES:
+        raise PublicServiceContractError(f"{field} is invalid")
+    return mode
+
+
+def _audience(value: Any, field: str) -> str:
+    selected = _text(value, field, maximum=20)
+    if selected not in PUBLIC_AUDIENCES:
+        raise PublicServiceContractError(f"{field} is invalid")
+    return selected
+
+
+def _audiences(value: Any, field: str) -> list[str]:
+    return _sorted_texts(
+        value,
+        field,
+        maximum_items=4,
+        maximum_length=20,
+        allowed=PUBLIC_AUDIENCES,
+    )
+
+
+def service_query_audiences(query: dict[str, Any]) -> list[str]:
+    """Return the public audience vocabulary for either supported query shape."""
+
+    checked = validate_service_query(query)
+    if checked["schemaVersion"] == SERVICE_QUERY_SCHEMA_VERSION_1_0:
+        return [_LEGACY_TO_AUDIENCE[scope] for scope in checked["requestedScopes"]]
+    return list(checked["requestedAudiences"])
+
+
+def service_query_legacy_scopes(query: dict[str, Any]) -> list[str]:
+    """Project a public query onto the private managed-plane compatibility seam."""
+
+    return [_AUDIENCE_TO_LEGACY[item] for item in service_query_audiences(query)]
+
+
+def service_query_execution_mode(query: dict[str, Any]) -> str:
+    checked = validate_service_query(query)
+    if checked["schemaVersion"] == SERVICE_QUERY_SCHEMA_VERSION_1_0:
+        return "service"
+    return checked["executionMode"]
+
+
+def service_query_history_mode(query: dict[str, Any]) -> str:
+    checked = validate_service_query(query)
+    if checked["schemaVersion"] == SERVICE_QUERY_SCHEMA_VERSION_1_0:
+        return (
+            "service-persisted"
+            if checked["dataUseMode"] in {"history", "organization"}
+            else "local-only"
+        )
+    return checked["historyMode"]
+
+
+def service_query_managed_data_use_mode(query: dict[str, Any]) -> str:
+    """Map the revised public policy onto the current private ranking contract."""
+
+    checked = validate_service_query(query)
+    if checked["schemaVersion"] == SERVICE_QUERY_SCHEMA_VERSION_1_0:
+        return checked["dataUseMode"]
+    return "history" if checked["historyMode"] == "service-persisted" else "standard"
+
+
 def _https_url(value: Any, field: str, *, maximum: int = 2048, allow_path: bool = True) -> str:
     selected = _text(value, field, maximum=maximum)
     try:
@@ -214,77 +315,30 @@ def _base64url_decode(value: str, *, expected_bytes: int, field: str) -> bytes:
     return decoded
 
 
-def _execution_mode(value: Any, field: str) -> str:
-    mode = _text(value, field, maximum=16)
-    if mode not in EXECUTION_MODES:
-        raise PublicServiceContractError(f"{field} is invalid")
-    return mode
-
-
-def _history_mode(value: Any, field: str) -> str:
-    mode = _text(value, field, maximum=24)
-    if mode not in HISTORY_MODES:
-        raise PublicServiceContractError(f"{field} is invalid")
-    return mode
-
-
-def _audience(value: Any, field: str) -> str:
-    selected = _text(value, field, maximum=20)
-    if selected not in PUBLIC_AUDIENCES:
-        raise PublicServiceContractError(f"{field} is invalid")
-    return selected
-
-
-def _audiences(value: Any, field: str) -> list[str]:
-    return _sorted_texts(
-        value,
-        field,
-        maximum_items=4,
-        maximum_length=20,
-        allowed=PUBLIC_AUDIENCES,
-    )
-
-
 def validate_service_profile_root_key(value: Any) -> dict[str, str]:
     """Validate the public, out-of-band trust anchor embedded in a profile."""
 
     item = _exact(value, {"keyId", "algorithm", "publicKey"}, "service profile root key")
-    key_id = _text(
-        item["keyId"],
-        "service profile root key keyId",
-        maximum=200,
-        pattern=_IDENTIFIER,
-    )
-    algorithm = _text(
-        item["algorithm"],
-        "service profile root key algorithm",
-        maximum=20,
-    )
+    key_id = _text(item["keyId"], "service profile root key keyId", maximum=200, pattern=_IDENTIFIER)
+    algorithm = _text(item["algorithm"], "service profile root key algorithm", maximum=20)
     public_key = _text(
-        item["publicKey"],
-        "service profile root key publicKey",
-        maximum=43,
-        pattern=_BASE64URL_32,
+        item["publicKey"], "service profile root key publicKey", maximum=43, pattern=_BASE64URL_32
     )
     if algorithm != SIGNATURE_ALGORITHM:
         raise PublicServiceContractError("service profile root key algorithm is invalid")
-    _base64url_decode(
-        public_key,
-        expected_bytes=32,
-        field="service profile root key publicKey",
-    )
+    _base64url_decode(public_key, expected_bytes=32, field="service profile root key publicKey")
     return {"keyId": key_id, "algorithm": algorithm, "publicKey": public_key}
 
 
 def validate_service_profile(value: Any) -> dict[str, Any]:
-    """Validate a credential-free, owner-approved managed-service profile."""
+    """Validate one credential-free, owner-approved managed-service profile."""
 
     if not isinstance(value, dict):
         raise PublicServiceContractError("service profile has an unsupported shape")
     version = value.get("schemaVersion")
     if version not in SERVICE_PROFILE_SCHEMA_VERSIONS:
         raise PublicServiceContractError("service profile schemaVersion is invalid")
-    common = {
+    common_fields = {
         "schemaVersion",
         "apiBaseUrl",
         "serviceId",
@@ -294,13 +348,13 @@ def validate_service_profile(value: Any) -> dict[str, Any]:
     if version == SERVICE_PROFILE_SCHEMA_VERSION_1_0:
         profile = _exact(
             value,
-            common | {"dataUseMode", "requestedScopes"},
+            common_fields | {"dataUseMode", "requestedScopes"},
             "service profile",
         )
     else:
         profile = _exact(
             value,
-            common
+            common_fields
             | {
                 "executionMode",
                 "defaultAudience",
@@ -311,21 +365,11 @@ def validate_service_profile(value: Any) -> dict[str, Any]:
         )
     checked: dict[str, Any] = {
         "schemaVersion": version,
-        "apiBaseUrl": _https_url(
-            profile["apiBaseUrl"],
-            "service profile apiBaseUrl",
-            allow_path=False,
-        ),
-        "serviceId": _text(
-            profile["serviceId"],
-            "service profile serviceId",
-            maximum=200,
-            pattern=_IDENTIFIER,
-        ),
+        "apiBaseUrl": _https_url(profile["apiBaseUrl"], "service profile apiBaseUrl", allow_path=False),
+        "serviceId": _text(profile["serviceId"], "service profile serviceId", maximum=200, pattern=_IDENTIFIER),
         "rootKey": validate_service_profile_root_key(profile["rootKey"]),
         "acceptedPolicyDigest": _digest(
-            profile["acceptedPolicyDigest"],
-            "service profile acceptedPolicyDigest",
+            profile["acceptedPolicyDigest"], "service profile acceptedPolicyDigest"
         ),
     }
     if version == SERVICE_PROFILE_SCHEMA_VERSION_1_0:
@@ -346,8 +390,7 @@ def validate_service_profile(value: Any) -> dict[str, Any]:
         )
     else:
         execution_mode = _execution_mode(
-            profile["executionMode"],
-            "service profile executionMode",
+            profile["executionMode"], "service profile executionMode"
         )
         if execution_mode != "service":
             raise PublicServiceContractError(
@@ -357,12 +400,10 @@ def validate_service_profile(value: Any) -> dict[str, Any]:
             {
                 "executionMode": execution_mode,
                 "defaultAudience": _audience(
-                    profile["defaultAudience"],
-                    "service profile defaultAudience",
+                    profile["defaultAudience"], "service profile defaultAudience"
                 ),
                 "historyMode": _history_mode(
-                    profile["historyMode"],
-                    "service profile historyMode",
+                    profile["historyMode"], "service profile historyMode"
                 ),
                 "requestedAudiences": _audiences(
                     profile["requestedAudiences"],
@@ -375,7 +416,44 @@ def validate_service_profile(value: Any) -> dict[str, Any]:
     return checked
 
 
+def build_service_profile(
+    *,
+    api_base_url: str,
+    service_id: str,
+    root_key_id: str,
+    root_public_key: bytes,
+    accepted_policy_digest: str,
+    execution_mode: str,
+    default_audience: str,
+    history_mode: str,
+    requested_audiences: Iterable[str],
+) -> dict[str, Any]:
+    """Build the current credential-free profile accepted by public clients."""
+
+    if not isinstance(root_public_key, bytes) or len(root_public_key) != 32:
+        raise PublicServiceContractError("service profile root public key is invalid")
+    return validate_service_profile(
+        {
+            "schemaVersion": SERVICE_PROFILE_SCHEMA_VERSION,
+            "apiBaseUrl": api_base_url,
+            "serviceId": service_id,
+            "rootKey": {
+                "keyId": root_key_id,
+                "algorithm": SIGNATURE_ALGORITHM,
+                "publicKey": _base64url_encode(root_public_key),
+            },
+            "acceptedPolicyDigest": accepted_policy_digest,
+            "executionMode": execution_mode,
+            "defaultAudience": default_audience,
+            "historyMode": history_mode,
+            "requestedAudiences": sorted(set(requested_audiences)),
+        }
+    )
+
+
 def _immutable_https_resource(value: Any, field: str) -> str:
+    """Validate one path-addressed HTTPS resource without URL-carried state."""
+
     selected = _text(value, field, maximum=2048)
     try:
         parsed = urlsplit(selected)
@@ -399,7 +477,12 @@ def _immutable_https_resource(value: Any, field: str) -> str:
 
 
 def validate_official_service_locator(value: Any) -> dict[str, Any]:
-    """Validate release-bundled authority for one-action activation."""
+    """Validate the release-bundled authority for one-action activation.
+
+    The resource host is deliberately not a trust anchor.  A client accepts
+    profile bytes only when their canonical digest, original root key, and
+    service identity all match this separately bundled record.
+    """
 
     locator = _exact(
         value,
@@ -413,12 +496,10 @@ def validate_official_service_locator(value: Any) -> dict[str, Any]:
     checked = {
         "schemaVersion": OFFICIAL_SERVICE_LOCATOR_SCHEMA_VERSION,
         "profileUrl": _immutable_https_resource(
-            locator["profileUrl"],
-            "official service locator profileUrl",
+            locator["profileUrl"], "official service locator profileUrl"
         ),
         "profileDigest": _digest(
-            locator["profileDigest"],
-            "official service locator profileDigest",
+            locator["profileDigest"], "official service locator profileDigest"
         ),
         "serviceId": _text(
             locator["serviceId"],
@@ -429,10 +510,25 @@ def validate_official_service_locator(value: Any) -> dict[str, Any]:
         "rootKey": validate_service_profile_root_key(locator["rootKey"]),
     }
     if len(canonical_json_bytes(checked)) > MAX_OFFICIAL_SERVICE_LOCATOR_BYTES:
-        raise PublicServiceContractError(
-            "official service locator exceeds its byte limit"
-        )
+        raise PublicServiceContractError("official service locator exceeds its byte limit")
     return checked
+
+
+def build_official_service_locator(
+    *, profile_url: str, profile: dict[str, Any]
+) -> dict[str, Any]:
+    """Bind one immutable profile resource to release-embedded trust material."""
+
+    checked_profile = validate_service_profile(profile)
+    return validate_official_service_locator(
+        {
+            "schemaVersion": OFFICIAL_SERVICE_LOCATOR_SCHEMA_VERSION,
+            "profileUrl": profile_url,
+            "profileDigest": sha256_json(checked_profile),
+            "serviceId": checked_profile["serviceId"],
+            "rootKey": checked_profile["rootKey"],
+        }
+    )
 
 
 def _signature(value: Any, field: str) -> dict[str, str]:
@@ -522,9 +618,7 @@ def _receiver_context(value: Any) -> dict[str, Any]:
     interfaces = _sorted_texts(
         context["interfaces"], "receiverContext interfaces", maximum_items=32, maximum_length=128
     )
-    applicable = (
-        checked_targets if mode == "all-targets" else [item for item in checked_targets if item["id"] == selected]
-    )
+    applicable = checked_targets if mode == "all-targets" else [item for item in checked_targets if item["id"] == selected]
     if any(not set(interfaces).issubset(set(item["interfaces"])) for item in applicable):
         raise PublicServiceContractError("receiverContext target interfaces do not cover the receiver")
     return {
@@ -544,67 +638,129 @@ def _receiver_context(value: Any) -> dict[str, Any]:
 
 
 def validate_service_query(value: Any, *, at: datetime | None = None) -> dict[str, Any]:
-    query = _exact(
-        value,
-        {
-            "schemaVersion",
-            "requestId",
-            "objective",
-            "receiverContext",
-            "requestedScopes",
-            "requestedTreatments",
-            "dataUseMode",
-            "client",
-            "issuedAt",
-            "expiresAt",
-            "queryDigest",
-        },
-        "service query",
-    )
-    if query["schemaVersion"] != SERVICE_QUERY_SCHEMA_VERSION:
+    if not isinstance(value, dict):
+        raise PublicServiceContractError("service query has an unsupported shape")
+    version = value.get("schemaVersion")
+    if version not in SERVICE_QUERY_SCHEMA_VERSIONS:
         raise PublicServiceContractError("service query schemaVersion is invalid")
+    common_fields = {
+        "schemaVersion",
+        "requestId",
+        "objective",
+        "receiverContext",
+        "requestedTreatments",
+        "client",
+        "issuedAt",
+        "expiresAt",
+        "queryDigest",
+    }
+    if version == SERVICE_QUERY_SCHEMA_VERSION_1_0:
+        query = _exact(
+            value,
+            common_fields | {"requestedScopes", "dataUseMode"},
+            "service query",
+        )
+    else:
+        query = _exact(
+            value,
+            common_fields
+            | {"requestedAudiences", "executionMode", "historyMode"},
+            "service query",
+        )
     client = _exact(query["client"], {"name", "version", "supportedResults"}, "service query client")
     context = _receiver_context(query["receiverContext"])
     issued_at, expires_at = _lifetime(
         query["issuedAt"], query["expiresAt"], maximum=MAX_QUERY_TTL, field="service query"
     )
-    unsigned = {
-        "schemaVersion": SERVICE_QUERY_SCHEMA_VERSION,
+    unsigned: dict[str, Any] = {
+        "schemaVersion": version,
         "requestId": _text(query["requestId"], "service query requestId", maximum=128, pattern=_REQUEST),
         "objective": _text(query["objective"], "service query objective", maximum=480),
         "receiverContext": context,
-        "requestedScopes": _sorted_texts(
-            query["requestedScopes"],
-            "service query requestedScopes",
-            maximum_items=4,
-            maximum_length=20,
-            allowed=QUERY_SCOPES,
-        ),
         "requestedTreatments": _sorted_texts(
-            query["requestedTreatments"],
-            "service query requestedTreatments",
-            maximum_items=2,
-            maximum_length=32,
-            allowed=TREATMENT_CLASSES,
+            query["requestedTreatments"], "service query requestedTreatments", maximum_items=2,
+            maximum_length=32, allowed=TREATMENT_CLASSES,
         ),
-        "dataUseMode": _text(query["dataUseMode"], "service query dataUseMode", maximum=20),
         "client": {
             "name": _text(client["name"], "service query client name", maximum=80, pattern=_IDENTIFIER),
             "version": _text(client["version"], "service query client version", maximum=64, pattern=_SEMVERISH),
             "supportedResults": _sorted_texts(
-                client["supportedResults"],
-                "service query client supportedResults",
-                maximum_items=4,
+                client["supportedResults"], "service query client supportedResults", maximum_items=4,
                 maximum_length=80,
             ),
         },
         "issuedAt": issued_at,
         "expiresAt": expires_at,
     }
-    if unsigned["dataUseMode"] not in DATA_USE_MODES:
-        raise PublicServiceContractError("service query dataUseMode is invalid")
-    if not set(unsigned["client"]["supportedResults"]).intersection(SERVICE_QUERY_RESULT_SCHEMA_VERSIONS):
+    supported_results = set(unsigned["client"]["supportedResults"])
+    if version == SERVICE_QUERY_SCHEMA_VERSION_1_0:
+        mode = _text(query["dataUseMode"], "service query dataUseMode", maximum=20)
+        if mode not in DATA_USE_MODES:
+            raise PublicServiceContractError("service query dataUseMode is invalid")
+        unsigned.update(
+            {
+                "requestedScopes": _sorted_texts(
+                    query["requestedScopes"],
+                    "service query requestedScopes",
+                    maximum_items=4,
+                    maximum_length=20,
+                    allowed=QUERY_SCOPES,
+                ),
+                "dataUseMode": mode,
+            }
+        )
+        accepted_results = set(_LEGACY_RESULT_VERSIONS)
+    else:
+        execution_mode = _execution_mode(
+            query["executionMode"], "service query executionMode"
+        )
+        if execution_mode != "service":
+            raise PublicServiceContractError(
+                "service query executionMode must use the service"
+            )
+        unsigned.update(
+            {
+                "requestedAudiences": _audiences(
+                    query["requestedAudiences"],
+                    "service query requestedAudiences",
+                ),
+                "executionMode": execution_mode,
+                "historyMode": _history_mode(
+                    query["historyMode"], "service query historyMode"
+                ),
+            }
+        )
+        accepted_results = {SERVICE_QUERY_RESULT_SCHEMA_VERSION}
+    # Preserve field order from the original input-independent contract.
+    unsigned = {
+        "schemaVersion": unsigned["schemaVersion"],
+        "requestId": unsigned["requestId"],
+        "objective": unsigned["objective"],
+        "receiverContext": unsigned["receiverContext"],
+        **(
+            {
+                "requestedScopes": unsigned["requestedScopes"],
+                "requestedTreatments": unsigned["requestedTreatments"],
+                "dataUseMode": unsigned["dataUseMode"],
+            }
+            if version == SERVICE_QUERY_SCHEMA_VERSION_1_0
+            else {
+                "requestedAudiences": unsigned["requestedAudiences"],
+                "requestedTreatments": unsigned["requestedTreatments"],
+                "executionMode": unsigned["executionMode"],
+                "historyMode": unsigned["historyMode"],
+            }
+        ),
+        "client": unsigned["client"],
+        "issuedAt": unsigned["issuedAt"],
+        "expiresAt": unsigned["expiresAt"],
+    }
+    if not supported_results.intersection(accepted_results):
         raise PublicServiceContractError("service query client cannot accept this service result")
+    if not supported_results.issubset(accepted_results):
+        raise PublicServiceContractError(
+            "service query client mixed incompatible result generations"
+        )
     digest = _digest(query["queryDigest"], "service query queryDigest")
     if digest != sha256_json(unsigned):
         raise PublicServiceContractError("service query digest does not bind its exact content")
@@ -620,9 +776,10 @@ def build_service_query(
     request_id: str,
     objective: str,
     receiver_context: dict[str, Any],
-    requested_scopes: Iterable[str],
+    requested_audiences: Iterable[str],
     requested_treatments: Iterable[str],
-    data_use_mode: str,
+    execution_mode: str,
+    history_mode: str,
     client_name: str,
     client_version: str,
     issued_at: datetime,
@@ -638,13 +795,53 @@ def build_service_query(
         "requestId": request_id,
         "objective": objective,
         "receiverContext": receiver_context,
+        "requestedAudiences": sorted(set(requested_audiences)),
+        "requestedTreatments": sorted(set(requested_treatments)),
+        "executionMode": execution_mode,
+        "historyMode": history_mode,
+        "client": {
+            "name": client_name,
+            "version": client_version,
+            "supportedResults": [SERVICE_QUERY_RESULT_SCHEMA_VERSION],
+        },
+        "issuedAt": isoformat_utc(issued),
+        "expiresAt": isoformat_utc(issued + timedelta(seconds=ttl_seconds)),
+    }
+    return validate_service_query({**unsigned, "queryDigest": sha256_json(unsigned)})
+
+
+def build_legacy_service_query(
+    *,
+    request_id: str,
+    objective: str,
+    receiver_context: dict[str, Any],
+    requested_scopes: Iterable[str],
+    requested_treatments: Iterable[str],
+    data_use_mode: str,
+    client_name: str,
+    client_version: str,
+    issued_at: datetime,
+    ttl_seconds: int = 60,
+) -> dict[str, Any]:
+    """Build a 1.0 compatibility query without emitting it from new clients."""
+
+    if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or not 1 <= ttl_seconds <= 300:
+        raise PublicServiceContractError("service query ttl is invalid")
+    if not isinstance(issued_at, datetime) or issued_at.tzinfo is None:
+        raise PublicServiceContractError("service query issuedAt is invalid")
+    issued = issued_at.astimezone(UTC).replace(microsecond=0)
+    unsigned = {
+        "schemaVersion": SERVICE_QUERY_SCHEMA_VERSION_1_0,
+        "requestId": request_id,
+        "objective": objective,
+        "receiverContext": receiver_context,
         "requestedScopes": sorted(set(requested_scopes)),
         "requestedTreatments": sorted(set(requested_treatments)),
         "dataUseMode": data_use_mode,
         "client": {
             "name": client_name,
             "version": client_version,
-            "supportedResults": list(SERVICE_QUERY_RESULT_SCHEMA_VERSIONS),
+            "supportedResults": list(_LEGACY_RESULT_VERSIONS),
         },
         "issuedAt": isoformat_utc(issued),
         "expiresAt": isoformat_utc(issued + timedelta(seconds=ttl_seconds)),
@@ -659,13 +856,22 @@ def _compatibility(value: Any) -> dict[str, Any]:
         "selection compatibility",
     )
     interfaces = _sorted_texts(
-        item["interfaces"], "selection compatibility interfaces", maximum_items=32, maximum_length=128
+        item["interfaces"],
+        "selection compatibility interfaces",
+        maximum_items=32,
+        maximum_length=128,
     )
     platforms = _sorted_texts(
-        item["platforms"], "selection compatibility platforms", maximum_items=16, maximum_length=64
+        item["platforms"],
+        "selection compatibility platforms",
+        maximum_items=16,
+        maximum_length=64,
     )
     architectures = _sorted_texts(
-        item["architectures"], "selection compatibility architectures", maximum_items=16, maximum_length=64
+        item["architectures"],
+        "selection compatibility architectures",
+        maximum_items=16,
+        maximum_length=64,
     )
     return {
         "runtime": _text(item["runtime"], "selection compatibility runtime", maximum=64),
@@ -733,15 +939,9 @@ def _method(value: Any) -> dict[str, Any]:
     return {
         "summary": _text(item["summary"], "source-free method summary", maximum=400),
         "steps": checked_steps,
-        "constraints": _sorted_texts(
-            item["constraints"], "source-free method constraints", maximum_items=16, maximum_length=240
-        ),
-        "evaluation": _sorted_texts(
-            item["evaluation"], "source-free method evaluation", maximum_items=16, maximum_length=240
-        ),
-        "limitations": _sorted_texts(
-            item["limitations"], "source-free method limitations", maximum_items=16, maximum_length=240
-        ),
+        "constraints": _sorted_texts(item["constraints"], "source-free method constraints", maximum_items=16, maximum_length=240),
+        "evaluation": _sorted_texts(item["evaluation"], "source-free method evaluation", maximum_items=16, maximum_length=240),
+        "limitations": _sorted_texts(item["limitations"], "source-free method limitations", maximum_items=16, maximum_length=240),
     }
 
 
@@ -749,7 +949,7 @@ def _selection(
     value: Any,
     *,
     treatment: str,
-    require_supply_authority: bool = False,
+    result_version: str,
 ) -> dict[str, Any]:
     if treatment == "abstention":
         item = _exact(value, {"reason", "uncertainty", "missingFact"}, "abstention selection")
@@ -759,16 +959,10 @@ def _selection(
             "missingFact": _text(item["missingFact"], "abstention missingFact", maximum=128),
         }
     common = {
-        "capabilityId",
-        "title",
-        "summary",
-        "cardDigest",
-        "compatibility",
-        "allowedUses",
-        "provenance",
-        "confidence",
-        "rationale",
+        "capabilityId", "title", "summary", "cardDigest", "compatibility", "allowedUses",
+        "provenance", "confidence", "rationale",
     }
+    require_supply_authority = result_version != SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_0
     if require_supply_authority:
         common.add("supplyAuthorityId")
     expected = common | ({"immutable"} if treatment == "exact-component" else {"method"})
@@ -782,9 +976,7 @@ def _selection(
         "summary": _text(item["summary"], "selection summary", maximum=400),
         "cardDigest": _digest(item["cardDigest"], "selection cardDigest"),
         "compatibility": _compatibility(item["compatibility"]),
-        "allowedUses": _sorted_texts(
-            item["allowedUses"], "selection allowedUses", maximum_items=32, maximum_length=128
-        ),
+        "allowedUses": _sorted_texts(item["allowedUses"], "selection allowedUses", maximum_items=32, maximum_length=128),
         "provenance": _provenance(item["provenance"]),
         "confidence": confidence,
         "rationale": _text(item["rationale"], "selection rationale", maximum=280),
@@ -799,19 +991,64 @@ def _selection(
     if treatment == "source-free-method":
         normalized["method"] = _method(item["method"])
         return normalized
-    immutable = _exact(item["immutable"], {"kind", "uri", "revision", "digest"}, "selection immutable")
-    kind = _text(immutable["kind"], "selection immutable kind", maximum=24)
+    raw_immutable = item["immutable"]
+    if not isinstance(raw_immutable, dict):
+        raise PublicServiceContractError("selection immutable has an unsupported shape")
+    kind = _text(raw_immutable.get("kind"), "selection immutable kind", maximum=24)
+    immutable_fields = {"kind", "uri", "revision", "digest"}
+    if result_version in {
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION,
+    } and kind == "artifact":
+        immutable_fields.add("authorization")
+    immutable = _exact(raw_immutable, immutable_fields, "selection immutable")
     if kind not in {"artifact", "git-commit"}:
         raise PublicServiceContractError("selection immutable kind is invalid")
     revision = _text(immutable["revision"], "selection immutable revision", maximum=80)
     if kind == "git-commit" and _COMMIT.fullmatch(revision) is None:
         raise PublicServiceContractError("selection immutable Git revision is invalid")
-    normalized["immutable"] = {
+    uri = _https_url(immutable["uri"], "selection immutable uri")
+    if result_version in {
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION,
+    } and urlsplit(uri).query:
+        raise PublicServiceContractError(
+            "selection immutable uri cannot contain query parameters"
+        )
+    normalized_immutable = {
         "kind": kind,
-        "uri": _https_url(immutable["uri"], "selection immutable uri"),
+        "uri": uri,
         "revision": revision,
         "digest": _digest(immutable["digest"], "selection immutable digest"),
     }
+    if result_version in {
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION,
+    } and kind == "artifact":
+        authorization = _exact(
+            immutable["authorization"],
+            {"header", "value"},
+            "selection immutable authorization",
+        )
+        header = _text(
+            authorization["header"],
+            "selection immutable authorization header",
+            maximum=64,
+        )
+        if header != "Limitless-Capability":
+            raise PublicServiceContractError(
+                "selection immutable authorization header is invalid"
+            )
+        normalized_immutable["authorization"] = {
+            "header": header,
+            "value": _text(
+                authorization["value"],
+                "selection immutable authorization value",
+                maximum=43,
+                pattern=_BASE64URL_32,
+            ),
+        }
+    normalized["immutable"] = normalized_immutable
     return normalized
 
 
@@ -822,35 +1059,30 @@ def validate_service_query_result(
     expected_query: dict[str, Any] | None = None,
     at: datetime | None = None,
 ) -> dict[str, Any]:
-    result = _exact(
-        value,
-        {
-            "schemaVersion",
-            "requestDigest",
-            "decisionRef",
-            "authorizedScopes",
-            "dataUse",
-            "treatment",
-            "selection",
-            "nextAction",
-            "indexGeneration",
-            "issuedAt",
-            "expiresAt",
-            "resultDigest",
-            "signature",
-        },
-        "service query result",
-    )
-    if result["schemaVersion"] not in SERVICE_QUERY_RESULT_SCHEMA_VERSIONS:
+    if not isinstance(value, dict):
+        raise PublicServiceContractError("service query result has an unsupported shape")
+    result_version = value.get("schemaVersion")
+    if result_version not in SERVICE_QUERY_RESULT_SCHEMA_VERSIONS:
         raise PublicServiceContractError("service query result schemaVersion is invalid")
-    result_version = result["schemaVersion"]
+    common_fields = {
+        "schemaVersion", "requestDigest", "decisionRef", "treatment", "selection",
+        "nextAction", "indexGeneration", "issuedAt", "expiresAt", "resultDigest", "signature",
+    }
+    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION:
+        result = _exact(
+            value,
+            common_fields | {"authorizedAudiences", "policy"},
+            "service query result",
+        )
+    else:
+        result = _exact(
+            value,
+            common_fields | {"authorizedScopes", "dataUse"},
+            "service query result",
+        )
     treatment = _text(result["treatment"], "service query result treatment", maximum=32)
     if treatment not in {*TREATMENT_CLASSES, "abstention"}:
         raise PublicServiceContractError("service query result treatment is invalid")
-    data_use = _exact(result["dataUse"], {"effectiveMode", "policyDigest"}, "service query result dataUse")
-    mode = _text(data_use["effectiveMode"], "service query result effectiveMode", maximum=20)
-    if mode not in DATA_USE_MODES:
-        raise PublicServiceContractError("service query result effectiveMode is invalid")
     issued_at, expires_at = _lifetime(
         result["issuedAt"], result["expiresAt"], maximum=MAX_RESULT_TTL, field="service query result"
     )
@@ -858,33 +1090,104 @@ def validate_service_query_result(
         next_action = validate_next_action(result["nextAction"])
     except ValueError as error:
         raise PublicServiceContractError("service query result nextAction is invalid") from error
-    normalized = {
+    normalized: dict[str, Any] = {
         "schemaVersion": result_version,
         "requestDigest": _digest(result["requestDigest"], "service query result requestDigest"),
         "decisionRef": _text(result["decisionRef"], "service query result decisionRef", maximum=128, pattern=_DECISION),
-        "authorizedScopes": _sorted_texts(
-            result["authorizedScopes"],
-            "service query result authorizedScopes",
-            maximum_items=4,
-            maximum_length=20,
-            allowed=QUERY_SCOPES,
-        ),
-        "dataUse": {
-            "effectiveMode": mode,
-            "policyDigest": _digest(data_use["policyDigest"], "service query result policyDigest"),
-        },
         "treatment": treatment,
         "selection": _selection(
             result["selection"],
             treatment=treatment,
-            require_supply_authority=(result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION),
+            result_version=result_version,
         ),
         "nextAction": next_action,
-        "indexGeneration": _positive_int(
-            result["indexGeneration"], "service query result indexGeneration", maximum=2**31 - 1
-        ),
+        "indexGeneration": _positive_int(result["indexGeneration"], "service query result indexGeneration", maximum=2**31 - 1),
         "issuedAt": issued_at,
         "expiresAt": expires_at,
+    }
+    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION:
+        policy = _exact(
+            result["policy"],
+            {"executionMode", "historyMode", "policyDigest"},
+            "service query result policy",
+        )
+        normalized.update(
+            {
+                "authorizedAudiences": _audiences(
+                    result["authorizedAudiences"],
+                    "service query result authorizedAudiences",
+                ),
+                "policy": {
+                    "executionMode": _execution_mode(
+                        policy["executionMode"],
+                        "service query result executionMode",
+                    ),
+                    "historyMode": _history_mode(
+                        policy["historyMode"],
+                        "service query result historyMode",
+                    ),
+                    "policyDigest": _digest(
+                        policy["policyDigest"],
+                        "service query result policyDigest",
+                    ),
+                },
+            }
+        )
+    else:
+        data_use = _exact(
+            result["dataUse"],
+            {"effectiveMode", "policyDigest"},
+            "service query result dataUse",
+        )
+        mode = _text(
+            data_use["effectiveMode"],
+            "service query result effectiveMode",
+            maximum=20,
+        )
+        if mode not in DATA_USE_MODES:
+            raise PublicServiceContractError(
+                "service query result effectiveMode is invalid"
+            )
+        normalized.update(
+            {
+                "authorizedScopes": _sorted_texts(
+                    result["authorizedScopes"],
+                    "service query result authorizedScopes",
+                    maximum_items=4,
+                    maximum_length=20,
+                    allowed=QUERY_SCOPES,
+                ),
+                "dataUse": {
+                    "effectiveMode": mode,
+                    "policyDigest": _digest(
+                        data_use["policyDigest"],
+                        "service query result policyDigest",
+                    ),
+                },
+            }
+        )
+    # Keep the signed normalized form stable and human-readable by contract generation.
+    normalized = {
+        "schemaVersion": normalized["schemaVersion"],
+        "requestDigest": normalized["requestDigest"],
+        "decisionRef": normalized["decisionRef"],
+        **(
+            {
+                "authorizedAudiences": normalized["authorizedAudiences"],
+                "policy": normalized["policy"],
+            }
+            if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION
+            else {
+                "authorizedScopes": normalized["authorizedScopes"],
+                "dataUse": normalized["dataUse"],
+            }
+        ),
+        "treatment": normalized["treatment"],
+        "selection": normalized["selection"],
+        "nextAction": normalized["nextAction"],
+        "indexGeneration": normalized["indexGeneration"],
+        "issuedAt": normalized["issuedAt"],
+        "expiresAt": normalized["expiresAt"],
     }
     if treatment == "abstention" and normalized["nextAction"]["kind"] != "supply-missing-fact":
         raise PublicServiceContractError("abstention nextAction is invalid")
@@ -904,10 +1207,33 @@ def validate_service_query_result(
             raise PublicServiceContractError("service query result version was not accepted by this client")
         if normalized["requestDigest"] != query["queryDigest"]:
             raise PublicServiceContractError("service query result is not bound to this query")
-        if normalized["dataUse"]["effectiveMode"] != query["dataUseMode"]:
-            raise PublicServiceContractError("service query result changed the requested data-use mode")
-        if not set(normalized["authorizedScopes"]).issubset(set(query["requestedScopes"])):
-            raise PublicServiceContractError("service query result scope was not requested")
+        if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION:
+            if query["schemaVersion"] != SERVICE_QUERY_SCHEMA_VERSION:
+                raise PublicServiceContractError(
+                    "service query result policy generation is incompatible"
+                )
+            if (
+                normalized["policy"]["executionMode"] != query["executionMode"]
+                or normalized["policy"]["historyMode"] != query["historyMode"]
+            ):
+                raise PublicServiceContractError(
+                    "service query result changed the requested policy"
+                )
+            if not set(normalized["authorizedAudiences"]).issubset(
+                set(query["requestedAudiences"])
+            ):
+                raise PublicServiceContractError(
+                    "service query result audience was not requested"
+                )
+        else:
+            if query["schemaVersion"] != SERVICE_QUERY_SCHEMA_VERSION_1_0:
+                raise PublicServiceContractError(
+                    "service query result policy generation is incompatible"
+                )
+            if normalized["dataUse"]["effectiveMode"] != query["dataUseMode"]:
+                raise PublicServiceContractError("service query result changed the requested data-use mode")
+            if not set(normalized["authorizedScopes"]).issubset(set(query["requestedScopes"])):
+                raise PublicServiceContractError("service query result scope was not requested")
         if treatment != "abstention" and treatment not in query["requestedTreatments"]:
             raise PublicServiceContractError("service query result treatment was not requested")
         if treatment != "abstention":
@@ -962,12 +1288,21 @@ def build_service_query_result(
     versioned_selection = dict(selection)
     if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_0:
         versioned_selection.pop("supplyAuthorityId", None)
-    unsigned = {
+    if (
+        result_version not in {
+            SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
+            SERVICE_QUERY_RESULT_SCHEMA_VERSION,
+        }
+        and isinstance(versioned_selection.get("immutable"), dict)
+        and "authorization" in versioned_selection["immutable"]
+    ):
+        raise PublicServiceContractError(
+            "legacy service result cannot carry artifact header authorization"
+        )
+    common = {
         "schemaVersion": result_version,
         "requestDigest": checked_query["queryDigest"],
         "decisionRef": decision_ref,
-        "authorizedScopes": sorted(set(authorized_scopes)),
-        "dataUse": {"effectiveMode": checked_query["dataUseMode"], "policyDigest": policy_digest},
         "treatment": treatment,
         "selection": versioned_selection,
         "nextAction": next_action,
@@ -975,6 +1310,47 @@ def build_service_query_result(
         "issuedAt": isoformat_utc(issued),
         "expiresAt": isoformat_utc(issued + timedelta(seconds=ttl_seconds)),
     }
+    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION:
+        authorized_audiences = sorted(
+            {
+                _LEGACY_TO_AUDIENCE.get(scope, scope)
+                for scope in authorized_scopes
+            }
+        )
+        unsigned = {
+            "schemaVersion": common["schemaVersion"],
+            "requestDigest": common["requestDigest"],
+            "decisionRef": common["decisionRef"],
+            "authorizedAudiences": authorized_audiences,
+            "policy": {
+                "executionMode": checked_query["executionMode"],
+                "historyMode": checked_query["historyMode"],
+                "policyDigest": policy_digest,
+            },
+            "treatment": common["treatment"],
+            "selection": common["selection"],
+            "nextAction": common["nextAction"],
+            "indexGeneration": common["indexGeneration"],
+            "issuedAt": common["issuedAt"],
+            "expiresAt": common["expiresAt"],
+        }
+    else:
+        unsigned = {
+            "schemaVersion": common["schemaVersion"],
+            "requestDigest": common["requestDigest"],
+            "decisionRef": common["decisionRef"],
+            "authorizedScopes": sorted(set(authorized_scopes)),
+            "dataUse": {
+                "effectiveMode": checked_query["dataUseMode"],
+                "policyDigest": policy_digest,
+            },
+            "treatment": common["treatment"],
+            "selection": common["selection"],
+            "nextAction": common["nextAction"],
+            "indexGeneration": common["indexGeneration"],
+            "issuedAt": common["issuedAt"],
+            "expiresAt": common["expiresAt"],
+        }
     digest = sha256_json(unsigned)
     try:
         signature = signer.sign(canonical_json_bytes({**unsigned, "resultDigest": digest}))
@@ -996,7 +1372,10 @@ def build_service_query_result(
 def _outcome_check_classes(value: Any) -> list[str]:
     if not isinstance(value, list) or len(value) > 8:
         raise PublicServiceContractError("service outcome checkClasses are invalid")
-    checked = [_text(item, "service outcome checkClass", maximum=40) for item in value]
+    checked = [
+        _text(item, "service outcome checkClass", maximum=40)
+        for item in value
+    ]
     if checked != sorted(set(checked)) or not set(checked).issubset(OUTCOME_CHECK_CLASSES):
         raise PublicServiceContractError("service outcome checkClasses are invalid")
     return checked
@@ -1010,14 +1389,8 @@ def validate_service_outcome_attempt(
     attempt = _exact(
         value,
         {
-            "schemaVersion",
-            "attemptId",
-            "status",
-            "evidenceDigest",
-            "checkClasses",
-            "issuedAt",
-            "expiresAt",
-            "attemptDigest",
+            "schemaVersion", "attemptId", "status", "evidenceDigest", "checkClasses",
+            "issuedAt", "expiresAt", "attemptDigest",
         },
         "service outcome attempt",
     )
@@ -1027,14 +1400,14 @@ def validate_service_outcome_attempt(
     if status not in OUTCOME_STATUSES:
         raise PublicServiceContractError("service outcome attempt status is invalid")
     issued_at, expires_at = _lifetime(
-        attempt["issuedAt"],
-        attempt["expiresAt"],
-        maximum=MAX_QUERY_TTL,
+        attempt["issuedAt"], attempt["expiresAt"], maximum=MAX_QUERY_TTL,
         field="service outcome attempt",
     )
     normalized = {
         "schemaVersion": SERVICE_OUTCOME_ATTEMPT_SCHEMA_VERSION,
-        "attemptId": _text(attempt["attemptId"], "service outcome attempt attemptId", maximum=128, pattern=_ATTEMPT),
+        "attemptId": _text(
+            attempt["attemptId"], "service outcome attempt attemptId", maximum=128, pattern=_ATTEMPT
+        ),
         "status": status,
         "evidenceDigest": _digest(attempt["evidenceDigest"], "service outcome attempt evidenceDigest"),
         "checkClasses": _outcome_check_classes(attempt["checkClasses"]),
@@ -1084,58 +1457,102 @@ def validate_service_outcome_receipt(
     expected_attempt: dict[str, Any] | None = None,
     expected_decision_ref: str | None = None,
 ) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise PublicServiceContractError(
+            "service outcome receipt has an unsupported shape"
+        )
+    version = value.get("schemaVersion")
+    if version not in SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSIONS:
+        raise PublicServiceContractError("service outcome receipt schemaVersion is invalid")
+    common_fields = {
+        "schemaVersion", "outcomeRef", "decisionRef", "resultDigest", "attemptId",
+        "attemptDigest", "status", "evidenceDigest", "checkClasses",
+        "rankingEligible", "acceptedAt", "receiptDigest", "signature",
+    }
     receipt = _exact(
         value,
-        {
-            "schemaVersion",
-            "outcomeRef",
-            "decisionRef",
-            "resultDigest",
-            "attemptId",
-            "attemptDigest",
-            "status",
-            "evidenceDigest",
-            "checkClasses",
-            "dataUse",
-            "rankingEligible",
-            "acceptedAt",
-            "receiptDigest",
-            "signature",
-        },
+        common_fields
+        | ({"policy"} if version == SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION else {"dataUse"}),
         "service outcome receipt",
     )
-    if receipt["schemaVersion"] != SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION:
-        raise PublicServiceContractError("service outcome receipt schemaVersion is invalid")
     status = _text(receipt["status"], "service outcome receipt status", maximum=24)
     if status not in OUTCOME_STATUSES:
         raise PublicServiceContractError("service outcome receipt status is invalid")
-    data_use = _exact(receipt["dataUse"], {"effectiveMode", "policyDigest"}, "service outcome receipt dataUse")
-    mode = _text(data_use["effectiveMode"], "service outcome receipt effectiveMode", maximum=20)
-    if mode not in DATA_USE_MODES:
-        raise PublicServiceContractError("service outcome receipt effectiveMode is invalid")
     if not isinstance(receipt["rankingEligible"], bool):
         raise PublicServiceContractError("service outcome receipt rankingEligible is invalid")
-    if mode == "private" and receipt["rankingEligible"]:
-        raise PublicServiceContractError("private service outcomes cannot be ranking eligible")
     accepted = isoformat_utc(_timestamp(receipt["acceptedAt"], "service outcome receipt acceptedAt"))
-    normalized = {
-        "schemaVersion": SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION,
+    normalized: dict[str, Any] = {
+        "schemaVersion": version,
         "outcomeRef": _text(receipt["outcomeRef"], "service outcome receipt outcomeRef", maximum=40, pattern=_OUTCOME),
-        "decisionRef": _text(
-            receipt["decisionRef"], "service outcome receipt decisionRef", maximum=128, pattern=_DECISION
-        ),
+        "decisionRef": _text(receipt["decisionRef"], "service outcome receipt decisionRef", maximum=128, pattern=_DECISION),
         "resultDigest": _digest(receipt["resultDigest"], "service outcome receipt resultDigest"),
         "attemptId": _text(receipt["attemptId"], "service outcome receipt attemptId", maximum=128, pattern=_ATTEMPT),
         "attemptDigest": _digest(receipt["attemptDigest"], "service outcome receipt attemptDigest"),
         "status": status,
         "evidenceDigest": _digest(receipt["evidenceDigest"], "service outcome receipt evidenceDigest"),
         "checkClasses": _outcome_check_classes(receipt["checkClasses"]),
-        "dataUse": {
-            "effectiveMode": mode,
-            "policyDigest": _digest(data_use["policyDigest"], "service outcome receipt policyDigest"),
-        },
         "rankingEligible": receipt["rankingEligible"],
         "acceptedAt": accepted,
+    }
+    if version == SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION:
+        policy = _exact(
+            receipt["policy"],
+            {"executionMode", "historyMode", "policyDigest"},
+            "service outcome receipt policy",
+        )
+        normalized["policy"] = {
+            "executionMode": _execution_mode(
+                policy["executionMode"], "service outcome receipt executionMode"
+            ),
+            "historyMode": _history_mode(
+                policy["historyMode"], "service outcome receipt historyMode"
+            ),
+            "policyDigest": _digest(
+                policy["policyDigest"], "service outcome receipt policyDigest"
+            ),
+        }
+    else:
+        data_use = _exact(
+            receipt["dataUse"],
+            {"effectiveMode", "policyDigest"},
+            "service outcome receipt dataUse",
+        )
+        mode = _text(
+            data_use["effectiveMode"],
+            "service outcome receipt effectiveMode",
+            maximum=20,
+        )
+        if mode not in DATA_USE_MODES:
+            raise PublicServiceContractError(
+                "service outcome receipt effectiveMode is invalid"
+            )
+        if mode == "confidential" and receipt["rankingEligible"]:
+            raise PublicServiceContractError(
+                "confidential service outcomes cannot be ranking eligible"
+            )
+        normalized["dataUse"] = {
+            "effectiveMode": mode,
+            "policyDigest": _digest(
+                data_use["policyDigest"], "service outcome receipt policyDigest"
+            ),
+        }
+    normalized = {
+        "schemaVersion": normalized["schemaVersion"],
+        "outcomeRef": normalized["outcomeRef"],
+        "decisionRef": normalized["decisionRef"],
+        "resultDigest": normalized["resultDigest"],
+        "attemptId": normalized["attemptId"],
+        "attemptDigest": normalized["attemptDigest"],
+        "status": normalized["status"],
+        "evidenceDigest": normalized["evidenceDigest"],
+        "checkClasses": normalized["checkClasses"],
+        **(
+            {"policy": normalized["policy"]}
+            if version == SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION
+            else {"dataUse": normalized["dataUse"]}
+        ),
+        "rankingEligible": normalized["rankingEligible"],
+        "acceptedAt": normalized["acceptedAt"],
     }
     digest = _digest(receipt["receiptDigest"], "service outcome receipt receiptDigest")
     if digest != sha256_json(normalized):
@@ -1167,17 +1584,18 @@ def build_service_outcome_receipt(
     decision_ref: str,
     result_digest: str,
     attempt: dict[str, Any],
-    effective_data_use_mode: str,
     policy_digest: str,
     ranking_eligible: bool,
     accepted_at: datetime,
     signer: DecisionSigningAuthority,
+    execution_mode: str | None = None,
+    history_mode: str | None = None,
+    effective_data_use_mode: str | None = None,
 ) -> dict[str, Any]:
     checked_attempt = validate_service_outcome_attempt(attempt)
     if not isinstance(accepted_at, datetime) or accepted_at.tzinfo is None:
         raise PublicServiceContractError("service outcome receipt acceptedAt is invalid")
-    unsigned = {
-        "schemaVersion": SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION,
+    common = {
         "outcomeRef": outcome_ref,
         "decisionRef": decision_ref,
         "resultDigest": result_digest,
@@ -1186,10 +1604,36 @@ def build_service_outcome_receipt(
         "status": checked_attempt["status"],
         "evidenceDigest": checked_attempt["evidenceDigest"],
         "checkClasses": checked_attempt["checkClasses"],
-        "dataUse": {"effectiveMode": effective_data_use_mode, "policyDigest": policy_digest},
         "rankingEligible": ranking_eligible,
         "acceptedAt": isoformat_utc(accepted_at.astimezone(UTC).replace(microsecond=0)),
     }
+    if effective_data_use_mode is not None:
+        if execution_mode is not None or history_mode is not None:
+            raise PublicServiceContractError(
+                "service outcome receipt mixed policy generations"
+            )
+        unsigned = {
+            "schemaVersion": SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION_1_0,
+            **common,
+            "dataUse": {
+                "effectiveMode": effective_data_use_mode,
+                "policyDigest": policy_digest,
+            },
+        }
+    else:
+        if execution_mode is None or history_mode is None:
+            raise PublicServiceContractError(
+                "service outcome receipt policy is incomplete"
+            )
+        unsigned = {
+            "schemaVersion": SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION,
+            **common,
+            "policy": {
+                "executionMode": execution_mode,
+                "historyMode": history_mode,
+                "policyDigest": policy_digest,
+            },
+        }
     digest = sha256_json(unsigned)
     try:
         signature = signer.sign(canonical_json_bytes({**unsigned, "receiptDigest": digest}))
@@ -1248,16 +1692,9 @@ def validate_service_root_key_transition(
     transition = _exact(
         value,
         {
-            "schemaVersion",
-            "serviceId",
-            "sequence",
-            "previousTransitionDigest",
-            "previousRootKey",
-            "nextRootKey",
-            "effectiveAt",
-            "issuedAt",
-            "transitionDigest",
-            "signatures",
+            "schemaVersion", "serviceId", "sequence", "previousTransitionDigest",
+            "previousRootKey", "nextRootKey", "effectiveAt", "issuedAt",
+            "transitionDigest", "signatures",
         },
         "service root key transition",
     )
@@ -1289,11 +1726,7 @@ def validate_service_root_key_transition(
     next_until = _timestamp(next_key["validUntil"], "service root key transition nextRootKey validUntil")
     if not previous_from <= issued_at < effective_at <= previous_until:
         raise PublicServiceContractError("service root key transition timing is invalid")
-    if (
-        effective_at - issued_at > MAX_ROOT_KEY_TRANSITION_LEAD
-        or next_from != effective_at
-        or next_until <= effective_at
-    ):
+    if effective_at - issued_at > MAX_ROOT_KEY_TRANSITION_LEAD or next_from != effective_at or next_until <= effective_at:
         raise PublicServiceContractError("service root key transition timing is invalid")
 
     unsigned = {
@@ -1367,13 +1800,7 @@ def build_service_root_key_transition(
 ) -> dict[str, Any]:
     if any(
         not isinstance(item, datetime) or item.tzinfo is None
-        for item in (
-            previous_root_valid_from,
-            previous_root_valid_until,
-            next_root_valid_until,
-            issued_at,
-            effective_at,
-        )
+        for item in (previous_root_valid_from, previous_root_valid_until, next_root_valid_until, issued_at, effective_at)
     ):
         raise PublicServiceContractError("service root key transition time is invalid")
     issued = issued_at.astimezone(UTC).replace(microsecond=0)
@@ -1602,39 +2029,35 @@ def validate_service_discovery(
     root_public_keys: Mapping[str, bytes] | None = None,
     at: datetime | None = None,
 ) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise PublicServiceContractError("service discovery has an unsupported shape")
+    schema_version = value.get("schemaVersion")
+    if schema_version not in SERVICE_DISCOVERY_SCHEMA_VERSIONS:
+        raise PublicServiceContractError("service discovery schemaVersion is invalid")
+    admission_fields = (
+        {
+            "contributionPolicyAcceptanceVersions",
+            "admissionStatusVersions",
+            "releaseRevocationVersions",
+        }
+        if schema_version == SERVICE_DISCOVERY_SCHEMA_VERSION
+        else set()
+    )
     discovery = _exact(
         value,
         {
-            "schemaVersion",
-            "serviceId",
-            "protocolVersion",
-            "apiBaseUrl",
-            "queryVersions",
-            "resultVersions",
-            "outcomeAttemptVersions",
-            "outcomeReceiptVersions",
-            "submissionIntentVersions",
-            "submissionPlanVersions",
-            "contentTransferGrantVersions",
-            "releaseVersions",
-            "rootTransitionVersions",
-            "rootTransitionState",
-            "signingKeys",
-            "dataUsePolicy",
-            "limits",
-            "issuedAt",
-            "expiresAt",
-            "documentDigest",
-            "signature",
-        },
+            "schemaVersion", "serviceId", "protocolVersion", "apiBaseUrl", "queryVersions", "resultVersions",
+            "outcomeAttemptVersions", "outcomeReceiptVersions", "submissionIntentVersions",
+            "submissionPlanVersions", "contentTransferGrantVersions", "releaseVersions",
+            "rootTransitionVersions", "rootTransitionState", "signingKeys", "dataUsePolicy",
+            "limits", "issuedAt", "expiresAt", "documentDigest", "signature",
+        }
+        | admission_fields,
         "service discovery",
     )
-    if discovery["schemaVersion"] != SERVICE_DISCOVERY_SCHEMA_VERSION:
-        raise PublicServiceContractError("service discovery schemaVersion is invalid")
     policy = _exact(discovery["dataUsePolicy"], {"url", "digest"}, "service discovery dataUsePolicy")
     transition_state = _exact(
-        discovery["rootTransitionState"],
-        {"latestSequence", "latestTransitionDigest"},
+        discovery["rootTransitionState"], {"latestSequence", "latestTransitionDigest"},
         "service discovery rootTransitionState",
     )
     transition_sequence = transition_state["latestSequence"]
@@ -1649,19 +2072,15 @@ def validate_service_discovery(
         if transition_digest is not None:
             raise PublicServiceContractError("service discovery rootTransitionState is invalid")
     else:
-        transition_digest = _digest(transition_digest, "service discovery rootTransitionState latestTransitionDigest")
+        transition_digest = _digest(
+            transition_digest, "service discovery rootTransitionState latestTransitionDigest"
+        )
     limits = _exact(
         discovery["limits"],
         {
-            "maxQueryBytes",
-            "maxResultBytes",
-            "maxOutcomeAttemptBytes",
-            "maxOutcomeReceiptBytes",
-            "maxSubmissionIntentBytes",
-            "maxSubmissionPlanBytes",
-            "maxContentTransferGrantBytes",
-            "maxReleaseBytes",
-            "rateLimitClass",
+            "maxQueryBytes", "maxResultBytes", "maxOutcomeAttemptBytes", "maxOutcomeReceiptBytes",
+            "maxSubmissionIntentBytes", "maxSubmissionPlanBytes", "maxContentTransferGrantBytes",
+            "maxReleaseBytes", "rateLimitClass",
         },
         "service discovery limits",
     )
@@ -1669,65 +2088,45 @@ def validate_service_discovery(
     if not isinstance(keys, list) or not 1 <= len(keys) <= 8:
         raise PublicServiceContractError("service discovery signingKeys are invalid")
     checked_keys = [_signing_key(item) for item in keys]
-    if checked_keys != sorted(checked_keys, key=lambda item: item["keyId"]) or len(
-        {item["keyId"] for item in checked_keys}
-    ) != len(checked_keys):
+    if checked_keys != sorted(checked_keys, key=lambda item: item["keyId"]) or len({item["keyId"] for item in checked_keys}) != len(checked_keys):
         raise PublicServiceContractError("service discovery signingKeys must be sorted and unique")
     issued_at, expires_at = _lifetime(
         discovery["issuedAt"], discovery["expiresAt"], maximum=MAX_DISCOVERY_TTL, field="service discovery"
     )
     unsigned = {
-        "schemaVersion": SERVICE_DISCOVERY_SCHEMA_VERSION,
+        "schemaVersion": schema_version,
         "serviceId": _text(discovery["serviceId"], "service discovery serviceId", maximum=200, pattern=_IDENTIFIER),
         "protocolVersion": _text(discovery["protocolVersion"], "service discovery protocolVersion", maximum=80),
         "apiBaseUrl": _https_url(discovery["apiBaseUrl"], "service discovery apiBaseUrl", allow_path=False),
-        "queryVersions": _sorted_texts(
-            discovery["queryVersions"], "service discovery queryVersions", maximum_items=4, maximum_length=80
-        ),
-        "resultVersions": _sorted_texts(
-            discovery["resultVersions"], "service discovery resultVersions", maximum_items=4, maximum_length=80
-        ),
+        "queryVersions": _sorted_texts(discovery["queryVersions"], "service discovery queryVersions", maximum_items=4, maximum_length=80),
+        "resultVersions": _sorted_texts(discovery["resultVersions"], "service discovery resultVersions", maximum_items=4, maximum_length=80),
         "outcomeAttemptVersions": _sorted_texts(
-            discovery["outcomeAttemptVersions"],
-            "service discovery outcomeAttemptVersions",
-            maximum_items=4,
-            maximum_length=80,
+            discovery["outcomeAttemptVersions"], "service discovery outcomeAttemptVersions",
+            maximum_items=4, maximum_length=80,
         ),
         "outcomeReceiptVersions": _sorted_texts(
-            discovery["outcomeReceiptVersions"],
-            "service discovery outcomeReceiptVersions",
-            maximum_items=4,
-            maximum_length=80,
+            discovery["outcomeReceiptVersions"], "service discovery outcomeReceiptVersions",
+            maximum_items=4, maximum_length=80,
         ),
         "submissionIntentVersions": _sorted_texts(
-            discovery["submissionIntentVersions"],
-            "service discovery submissionIntentVersions",
-            maximum_items=4,
-            maximum_length=80,
+            discovery["submissionIntentVersions"], "service discovery submissionIntentVersions",
+            maximum_items=4, maximum_length=80,
         ),
         "submissionPlanVersions": _sorted_texts(
-            discovery["submissionPlanVersions"],
-            "service discovery submissionPlanVersions",
-            maximum_items=4,
-            maximum_length=80,
+            discovery["submissionPlanVersions"], "service discovery submissionPlanVersions",
+            maximum_items=4, maximum_length=80,
         ),
         "contentTransferGrantVersions": _sorted_texts(
-            discovery["contentTransferGrantVersions"],
-            "service discovery contentTransferGrantVersions",
-            maximum_items=4,
-            maximum_length=80,
+            discovery["contentTransferGrantVersions"], "service discovery contentTransferGrantVersions",
+            maximum_items=4, maximum_length=80,
         ),
         "releaseVersions": _sorted_texts(
-            discovery["releaseVersions"],
-            "service discovery releaseVersions",
-            maximum_items=4,
-            maximum_length=80,
+            discovery["releaseVersions"], "service discovery releaseVersions",
+            maximum_items=4, maximum_length=80,
         ),
         "rootTransitionVersions": _sorted_texts(
-            discovery["rootTransitionVersions"],
-            "service discovery rootTransitionVersions",
-            maximum_items=4,
-            maximum_length=80,
+            discovery["rootTransitionVersions"], "service discovery rootTransitionVersions",
+            maximum_items=4, maximum_length=80,
         ),
         "rootTransitionState": {
             "latestSequence": transition_sequence,
@@ -1739,40 +2138,30 @@ def validate_service_discovery(
             "digest": _digest(policy["digest"], "service discovery dataUsePolicy digest"),
         },
         "limits": {
-            "maxQueryBytes": _positive_int(
-                limits["maxQueryBytes"], "service discovery maxQueryBytes", maximum=MAX_QUERY_BYTES
-            ),
-            "maxResultBytes": _positive_int(
-                limits["maxResultBytes"], "service discovery maxResultBytes", maximum=MAX_RESULT_BYTES
-            ),
+            "maxQueryBytes": _positive_int(limits["maxQueryBytes"], "service discovery maxQueryBytes", maximum=MAX_QUERY_BYTES),
+            "maxResultBytes": _positive_int(limits["maxResultBytes"], "service discovery maxResultBytes", maximum=MAX_RESULT_BYTES),
             "maxOutcomeAttemptBytes": _positive_int(
-                limits["maxOutcomeAttemptBytes"],
-                "service discovery maxOutcomeAttemptBytes",
+                limits["maxOutcomeAttemptBytes"], "service discovery maxOutcomeAttemptBytes",
                 maximum=MAX_OUTCOME_ATTEMPT_BYTES,
             ),
             "maxOutcomeReceiptBytes": _positive_int(
-                limits["maxOutcomeReceiptBytes"],
-                "service discovery maxOutcomeReceiptBytes",
+                limits["maxOutcomeReceiptBytes"], "service discovery maxOutcomeReceiptBytes",
                 maximum=MAX_OUTCOME_RECEIPT_BYTES,
             ),
             "maxSubmissionIntentBytes": _positive_int(
-                limits["maxSubmissionIntentBytes"],
-                "service discovery maxSubmissionIntentBytes",
+                limits["maxSubmissionIntentBytes"], "service discovery maxSubmissionIntentBytes",
                 maximum=MAX_INTENT_BYTES,
             ),
             "maxSubmissionPlanBytes": _positive_int(
-                limits["maxSubmissionPlanBytes"],
-                "service discovery maxSubmissionPlanBytes",
+                limits["maxSubmissionPlanBytes"], "service discovery maxSubmissionPlanBytes",
                 maximum=MAX_PLAN_BYTES,
             ),
             "maxContentTransferGrantBytes": _positive_int(
-                limits["maxContentTransferGrantBytes"],
-                "service discovery maxContentTransferGrantBytes",
+                limits["maxContentTransferGrantBytes"], "service discovery maxContentTransferGrantBytes",
                 maximum=MAX_CONTENT_TRANSFER_GRANT_BYTES,
             ),
             "maxReleaseBytes": _positive_int(
-                limits["maxReleaseBytes"],
-                "service discovery maxReleaseBytes",
+                limits["maxReleaseBytes"], "service discovery maxReleaseBytes",
                 maximum=MAX_RELEASE_BYTES,
             ),
             "rateLimitClass": _text(limits["rateLimitClass"], "service discovery rateLimitClass", maximum=80),
@@ -1780,18 +2169,56 @@ def validate_service_discovery(
         "issuedAt": issued_at,
         "expiresAt": expires_at,
     }
+    if schema_version == SERVICE_DISCOVERY_SCHEMA_VERSION:
+        unsigned.update(
+            {
+                "contributionPolicyAcceptanceVersions": _sorted_texts(
+                    discovery["contributionPolicyAcceptanceVersions"],
+                    "service discovery contributionPolicyAcceptanceVersions",
+                    maximum_items=4,
+                    maximum_length=80,
+                ),
+                "admissionStatusVersions": _sorted_texts(
+                    discovery["admissionStatusVersions"],
+                    "service discovery admissionStatusVersions",
+                    maximum_items=4,
+                    maximum_length=80,
+                ),
+                "releaseRevocationVersions": _sorted_texts(
+                    discovery["releaseRevocationVersions"],
+                    "service discovery releaseRevocationVersions",
+                    maximum_items=4,
+                    maximum_length=80,
+                ),
+            }
+        )
     if unsigned["protocolVersion"] != SERVICE_PROTOCOL_VERSION:
         raise PublicServiceContractError("service discovery protocolVersion is invalid")
     if (
-        SERVICE_QUERY_SCHEMA_VERSION not in unsigned["queryVersions"]
+        not set(unsigned["queryVersions"]).intersection(SERVICE_QUERY_SCHEMA_VERSIONS)
         or not set(unsigned["resultVersions"]).intersection(SERVICE_QUERY_RESULT_SCHEMA_VERSIONS)
         or SERVICE_OUTCOME_ATTEMPT_SCHEMA_VERSION not in unsigned["outcomeAttemptVersions"]
-        or SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION not in unsigned["outcomeReceiptVersions"]
-        or SUBMISSION_INTENT_SCHEMA_VERSION not in unsigned["submissionIntentVersions"]
+        or not set(unsigned["outcomeReceiptVersions"]).intersection(
+            SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSIONS
+        )
+        or not set(unsigned["submissionIntentVersions"]).intersection(
+            SUBMISSION_INTENT_SCHEMA_VERSIONS
+        )
         or SUBMISSION_PLAN_SCHEMA_VERSION not in unsigned["submissionPlanVersions"]
         or CONTENT_TRANSFER_GRANT_SCHEMA_VERSION not in unsigned["contentTransferGrantVersions"]
-        or IMMUTABLE_RELEASE_SCHEMA_VERSION not in unsigned["releaseVersions"]
+        or not set(unsigned["releaseVersions"]).intersection(
+            IMMUTABLE_RELEASE_SCHEMA_VERSIONS
+        )
         or SERVICE_ROOT_KEY_TRANSITION_SCHEMA_VERSION not in unsigned["rootTransitionVersions"]
+        or schema_version == SERVICE_DISCOVERY_SCHEMA_VERSION
+        and (
+            CONTRIBUTION_POLICY_ACCEPTANCE_SCHEMA_VERSION
+            not in unsigned["contributionPolicyAcceptanceVersions"]
+            or PUBLIC_ADMISSION_STATUS_SCHEMA_VERSION
+            not in unsigned["admissionStatusVersions"]
+            or PUBLIC_RELEASE_REVOCATION_SCHEMA_VERSION
+            not in unsigned["releaseRevocationVersions"]
+        )
     ):
         raise PublicServiceContractError("service discovery omits the required protocol versions")
     digest = _digest(discovery["documentDigest"], "service discovery documentDigest")
@@ -1845,14 +2272,19 @@ def build_service_discovery(
         "serviceId": service_id,
         "protocolVersion": SERVICE_PROTOCOL_VERSION,
         "apiBaseUrl": api_base_url,
-        "queryVersions": [SERVICE_QUERY_SCHEMA_VERSION],
+        "queryVersions": list(SERVICE_QUERY_SCHEMA_VERSIONS),
         "resultVersions": list(SERVICE_QUERY_RESULT_SCHEMA_VERSIONS),
         "outcomeAttemptVersions": [SERVICE_OUTCOME_ATTEMPT_SCHEMA_VERSION],
-        "outcomeReceiptVersions": [SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSION],
-        "submissionIntentVersions": [SUBMISSION_INTENT_SCHEMA_VERSION],
+        "outcomeReceiptVersions": list(SERVICE_OUTCOME_RECEIPT_SCHEMA_VERSIONS),
+        "submissionIntentVersions": list(SUBMISSION_INTENT_SCHEMA_VERSIONS),
         "submissionPlanVersions": [SUBMISSION_PLAN_SCHEMA_VERSION],
         "contentTransferGrantVersions": [CONTENT_TRANSFER_GRANT_SCHEMA_VERSION],
-        "releaseVersions": [IMMUTABLE_RELEASE_SCHEMA_VERSION],
+        "releaseVersions": list(IMMUTABLE_RELEASE_SCHEMA_VERSIONS),
+        "contributionPolicyAcceptanceVersions": [
+            CONTRIBUTION_POLICY_ACCEPTANCE_SCHEMA_VERSION
+        ],
+        "admissionStatusVersions": [PUBLIC_ADMISSION_STATUS_SCHEMA_VERSION],
+        "releaseRevocationVersions": [PUBLIC_RELEASE_REVOCATION_SCHEMA_VERSION],
         "rootTransitionVersions": [SERVICE_ROOT_KEY_TRANSITION_SCHEMA_VERSION],
         "rootTransitionState": {
             "latestSequence": root_transition_sequence,
@@ -1896,14 +2328,8 @@ def active_result_keys(discovery: dict[str, Any], *, at: datetime) -> dict[str, 
     now = at.astimezone(UTC).replace(microsecond=0)
     result: dict[str, bytes] = {}
     for item in checked["signingKeys"]:
-        if (
-            _timestamp(item["validFrom"], "signing key validFrom")
-            <= now
-            <= _timestamp(item["validUntil"], "signing key validUntil")
-        ):
-            result[item["keyId"]] = _base64url_decode(
-                item["publicKey"], expected_bytes=32, field="signing key publicKey"
-            )
+        if _timestamp(item["validFrom"], "signing key validFrom") <= now <= _timestamp(item["validUntil"], "signing key validUntil"):
+            result[item["keyId"]] = _base64url_decode(item["publicKey"], expected_bytes=32, field="signing key publicKey")
     if not result:
         raise PublicServiceContractError("service discovery has no active result key")
     return result

@@ -24,7 +24,7 @@ AT = datetime(2026, 8, 20, 22, 0, 30, tzinfo=UTC)
 CORPUS = Path(
     str(
         files("limitless_library.conformance").joinpath(
-            "public-service-lifecycle-1.0.json"
+            "public-service-lifecycle-1.1.json"
         )
     )
 )

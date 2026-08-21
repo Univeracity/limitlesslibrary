@@ -21,7 +21,7 @@ from limitless_library.service_connector import (
 )
 from limitless_library.service_contracts import validate_service_root_key_transition_set
 
-CORPUS = Path(str(files("limitless_library.conformance").joinpath("public-service-lifecycle-1.0.json")))
+CORPUS = Path(str(files("limitless_library.conformance").joinpath("public-service-lifecycle-1.1.json")))
 AT = datetime(2026, 8, 20, 22, 0, 30, tzinfo=UTC)
 
 
@@ -116,6 +116,7 @@ def _profile(corpus: dict[str, Any], *, token: str | None = None) -> ServiceProf
         root_key_id=root["keyId"],
         root_public_key=_decode(root["publicKey"]),
         accepted_policy_digest=discovery["dataUsePolicy"]["digest"],
+        requested_audiences=tuple(corpus["query"]["requestedAudiences"]),
         access_token=token,
     )
 
@@ -174,7 +175,7 @@ def test_policy_endpoint_and_scope_cannot_silently_drift() -> None:
         clock=lambda: AT,
     )
     broader = deepcopy(corpus["query"])
-    broader["requestedScopes"] = ["private", "public"]
+    broader["requestedAudiences"] = ["private", "public"]
     with pytest.raises(ServiceConnectorError, match="query"):
         valid.query(broader)
 
@@ -222,6 +223,64 @@ def test_profile_json_is_exact_and_never_serializes_the_access_token() -> None:
     invalid = {**summary, "schemaVersion": "limitless.service-profile/1.1"}
     with pytest.raises(ValueError, match="shape"):
         ServiceProfile.from_json(invalid)
+
+
+def test_query_builder_emits_only_the_current_public_policy_vocabulary() -> None:
+    corpus = load_json(CORPUS)
+    connector = ServiceConnector(
+        _profile(corpus),
+        transport=MemoryTransport(corpus),
+        clock=lambda: AT,
+    )
+
+    query = connector.build_query(
+        request_id="request:current-client-vocabulary-001",
+        objective="Find one compatible reviewed customization.",
+        receiver_context=corpus["query"]["receiverContext"],
+    )
+
+    assert query["schemaVersion"] == "limitless.service-query/1.1"
+    assert query["executionMode"] == "service"
+    assert query["historyMode"] == "local-only"
+    assert query["requestedAudiences"] == ["circle", "public"]
+    assert "dataUseMode" not in query
+    assert "requestedScopes" not in query
+    assert "exchange" not in canonical_json_bytes(query).decode("utf-8")
+
+
+def test_legacy_profile_is_mapped_without_re_emitting_deprecated_vocabulary() -> None:
+    corpus = load_json(CORPUS)
+    root = corpus["rootPublicKey"]
+    discovery = corpus["discovery"]
+    profile = ServiceProfile.from_json(
+        {
+            "schemaVersion": "limitless.service-profile/1.0",
+            "apiBaseUrl": discovery["apiBaseUrl"],
+            "serviceId": discovery["serviceId"],
+            "rootKey": root,
+            "acceptedPolicyDigest": discovery["dataUsePolicy"]["digest"],
+            "dataUseMode": "confidential",
+            "requestedScopes": ["exchange", "public"],
+        }
+    )
+    connector = ServiceConnector(
+        profile,
+        transport=MemoryTransport(corpus),
+        clock=lambda: AT,
+    )
+
+    encoded_profile = canonical_json_bytes(profile.public_summary()).decode("utf-8")
+    query = connector.build_query(
+        request_id="request:legacy-profile-mapping-001",
+        objective="Find one compatible reviewed customization.",
+        receiver_context=corpus["query"]["receiverContext"],
+    )
+
+    assert profile.default_audience == "private"
+    assert profile.history_mode == "local-only"
+    assert profile.requested_audiences == ("circle", "public")
+    assert "confidential" not in encoded_profile
+    assert "exchange" not in canonical_json_bytes(query).decode("utf-8")
 
 
 def test_connector_selects_the_effective_root_without_accepting_a_future_one() -> None:
