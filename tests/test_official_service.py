@@ -430,7 +430,7 @@ def test_release_bundles_the_content_addressed_official_identity() -> None:
         "https://api.limitlesslibrary.com/.well-known/limitless-service-profile/1.0.json"
     )
     assert locator["profileDigest"] == (
-        "sha256:6ea3ab4baa7a4f0fff6304d3ea352400f9c08af5bb8aaa3eed35d9f5a2ba33b8"
+        "sha256:9fd08ac0021ac2612635ace32150e013dd6cc5cef6f274517de24b5a695a62d4"
     )
     assert locator["rootKey"]["keyId"] == "key:limitless-root-2026-01"
 
