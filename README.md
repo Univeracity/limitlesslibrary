@@ -19,7 +19,7 @@
   <a href="#how-verified-reuse-works">Lifecycle</a> ·
   <a href="#mcp">MCP</a> ·
   <a href="#connect-an-agent">Connect an agent</a> ·
-  <a href="#optional-managed-service">Service</a> ·
+  <a href="#connect-to-limitless-library-service">Service</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -209,12 +209,12 @@ migrated or new installation uses Antigravity's current global profile. This
 local connection neither activates the managed service nor sends a query until
 the agent calls the tool.
 
-## Optional managed service
+## Connect to Limitless Library service
 
-Local use remains the default. An official client release can bundle one
-content-addressed service locator. A single explicit action fetches the exact
-credential-free profile, verifies its pinned identity, Ed25519 root and
-rotation chain, accepted policy, and discovery record, then stores that trust
+Local use remains available without the service. The official client bundles
+one content-addressed service locator. A single explicit action fetches the
+exact credential-free profile, verifies its pinned identity, Ed25519 root and
+rotation chain, accepted policy, and discovery document, then stores that trust
 boundary locally. It also creates one service-specific signing key, verifies
 the service's installation attestation, and obtains a short-lived anonymous
 session. No account, downloaded profile, pasted token, or API key is required
@@ -230,34 +230,21 @@ limitless service-query \
   --request ./service-query.json \
   --artifact-output ./selected.bin
 
-# After reviewing the advertised publication policy:
-limitless service-publish \
-  --draft ./examples/publication/publication.draft.json \
-  --accept-publication-policy-digest "$REVIEWED_PUBLICATION_POLICY_DIGEST"
-
-# Follow the saved state path returned by publication:
-limitless service-publication-status \
-  --state ./examples/publication/publication.draft.json.state.json
-
-limitless service-publication-revoke \
-  --state ./examples/publication/publication.draft.json.state.json
 ```
 
-`REVIEWED_PUBLICATION_POLICY_DIGEST` is the exact
-`publicationPolicy.digest` returned by `service-inspect` after the user reviews
-its policy URL. Publication fails if signed discovery has since changed it.
-
-Source builds without a published locator remain local-only; this repository
-does not invent a live service identity. Advanced integrations may still pass
-an owner-reviewed alternate profile with `--profile`. The client validates
-root rotation, signed discovery, policy continuity, query binding,
-compatibility, and the signed result before returning it. Remote failure yields
-control back to local reuse. Connecting alone never publishes a local capsule
-or silently installs selected work. Exact remote artifacts move only after the
-caller supplies `--artifact-output`: the client sends the signed one-use
-capability in a header, verifies the declared length and digest, and creates a
-new owner-only file without overwrite. Current exact selections also bind and
-verify the canonical bundle format, vendor media type, and positive length.
+The service currently accepts anonymous activation, queries, and outcome
+evidence. Public contribution contracts are included for interoperability, but
+publication intake remains disabled until the advertised publication policy is
+activated. Advanced integrations may still pass an owner-reviewed alternate
+profile with `--profile`. The client validates root rotation, signed discovery,
+policy continuity, query binding, compatibility, and the signed result before
+returning it. Remote failure yields control back to local reuse. Connecting
+alone never publishes a local capsule or silently installs selected work.
+Exact remote artifacts move only after the caller supplies
+`--artifact-output`: public immutable objects need no credential, while
+protected objects use a signed capability header. Both lanes verify the
+declared format, media type, length, and digest and create a new owner-only file
+without overwrite.
 Staging is not parsing, installation, or proof of adoption; those remain
 receiver-adapter responsibilities.
 

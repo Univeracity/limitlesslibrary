@@ -38,3 +38,9 @@
   publisher-visible admission status.
 - Owner-only publication follow-up for admission inspection and idempotent
   signed withdrawal of an active release.
+- Result 1.5 delivery lanes distinguish credential-free immutable public-edge
+  objects from protected capability-bearing objects without query-string
+  authority.
+- The release now pins the official Limitless Library service root and profile;
+  one action establishes anonymous installation authority and a short-lived
+  session without an account, pasted token, or downloaded profile.

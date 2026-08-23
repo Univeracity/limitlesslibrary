@@ -78,6 +78,7 @@ from .service_contracts import (
     SERVICE_CONTENT_UPLOAD_SCHEMA_VERSION,
     SERVICE_PROTOCOL_VERSION,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5,
     SERVICE_QUERY_RESULT_SCHEMA_VERSIONS,
     SERVICE_QUERY_SCHEMA_VERSION,
     active_result_keys,
@@ -899,7 +900,7 @@ class ServiceConnector:
         checked_result: dict[str, Any],
         selection: dict[str, Any],
         immutable: dict[str, Any],
-        authorization: dict[str, Any],
+        authorization: dict[str, Any] | None,
         destination: str | Path,
     ) -> dict[str, Any]:
         download = getattr(self._transport, "download_file", None)
@@ -926,14 +927,20 @@ class ServiceConnector:
             os.fchmod(descriptor, 0o600)
             with os.fdopen(descriptor, "wb") as handle:
                 descriptor = -1
+                headers = {
+                    "accept": immutable["mediaType"],
+                    "user-agent": "limitless-library/0.1.0a0",
+                }
+                if authorization is not None:
+                    headers.update(
+                        {
+                            "authorization": f"Bearer {self.profile.access_token}",
+                            authorization["header"]: authorization["value"],
+                        }
+                    )
                 response = download(
                     _request_url(immutable["uri"]),
-                    headers={
-                        "accept": immutable["mediaType"],
-                        "authorization": f"Bearer {self.profile.access_token}",
-                        "user-agent": "limitless-library/0.1.0a0",
-                        authorization["header"]: authorization["value"],
-                    },
+                    headers=headers,
                     destination=handle,
                     maximum_bytes=MAX_REMOTE_STREAMED_ARTIFACT_BYTES,
                     timeout_seconds=self._timeout_seconds,
@@ -1002,6 +1009,24 @@ class ServiceConnector:
         if not isinstance(immutable, dict) or immutable.get("kind") != "artifact":
             raise ServiceConnectorError("service result does not select a deliverable artifact")
         authorization = immutable.get("authorization")
+        if checked_result["schemaVersion"] == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5:
+            delivery = immutable.get("delivery")
+            if not isinstance(delivery, dict):
+                raise ServiceConnectorError("service artifact delivery is unavailable")
+            authorization = delivery.get("authorization")
+            if delivery.get("mode") == "public-edge":
+                authorization = None
+            elif delivery.get("mode") != "protected-capability" or not isinstance(
+                authorization, dict
+            ):
+                raise ServiceConnectorError("service artifact authorization is unavailable")
+            return self._stream_checked_artifact(
+                checked_result=checked_result,
+                selection=selection,
+                immutable=immutable,
+                authorization=authorization,
+                destination=destination,
+            )
         if not isinstance(authorization, dict):
             raise ServiceConnectorError("service artifact authorization is unavailable")
         if checked_result["schemaVersion"] == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4:

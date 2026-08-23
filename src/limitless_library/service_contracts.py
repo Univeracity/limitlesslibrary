@@ -59,12 +59,14 @@ SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_1 = "limitless.service-query-result/1.1"
 SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2 = "limitless.service-query-result/1.2"
 SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_3 = "limitless.service-query-result/1.3"
 SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4 = "limitless.service-query-result/1.4"
-SERVICE_QUERY_RESULT_SCHEMA_VERSION = SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4
+SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5 = "limitless.service-query-result/1.5"
+SERVICE_QUERY_RESULT_SCHEMA_VERSION = SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5
 SERVICE_QUERY_RESULT_SCHEMA_VERSIONS = (
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_1,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_3,
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5,
 )
 SERVICE_QUERY_RESULT_VALIDATION_VERSIONS = (
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_0,
@@ -133,7 +135,11 @@ _LEGACY_RESULT_VERSIONS = (
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_2,
 )
 POLICY_BOUND_SERVICE_QUERY_RESULT_SCHEMA_VERSIONS = frozenset(
-    {SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_3, SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4}
+    {
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_3,
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5,
+    }
 )
 _CURRENT_POLICY_RESULT_VERSIONS = POLICY_BOUND_SERVICE_QUERY_RESULT_SCHEMA_VERSIONS
 _HEADER_AUTHORIZATION_RESULT_VERSIONS = frozenset(
@@ -145,6 +151,9 @@ _HEADER_AUTHORIZATION_RESULT_VERSIONS = frozenset(
 )
 _EXACT_ARTIFACT_FORMAT = "limitless.exact-file-bundle/1.0"
 _EXACT_ARTIFACT_MEDIA_TYPE = "application/vnd.limitless.exact-file-bundle+json"
+_PUBLIC_EDGE_CACHE_CONTROL = "public, max-age=31536000, immutable"
+_PUBLIC_EDGE_OBJECT = re.compile(r"^public-edge-object:[0-9a-f]{32}$")
+_PUBLIC_EDGE_PROMOTION = re.compile(r"^public-edge-promotion:[0-9a-f]{32}$")
 _LEGACY_TO_AUDIENCE = {
     "private": "private",
     "exchange": "circle",
@@ -709,7 +718,7 @@ def validate_service_query(value: Any, *, at: datetime | None = None) -> dict[st
             "name": _text(client["name"], "service query client name", maximum=80, pattern=_IDENTIFIER),
             "version": _text(client["version"], "service query client version", maximum=64, pattern=_SEMVERISH),
             "supportedResults": _sorted_texts(
-                client["supportedResults"], "service query client supportedResults", maximum_items=4,
+                client["supportedResults"], "service query client supportedResults", maximum_items=8,
                 maximum_length=80,
             ),
         },
@@ -974,6 +983,125 @@ def _method(value: Any) -> dict[str, Any]:
     }
 
 
+def _artifact_delivery_1_5(
+    value: Any,
+    *,
+    artifact_digest: str,
+    artifact_uri: str,
+) -> dict[str, Any]:
+    parsed = urlsplit(artifact_uri)
+    if parsed.query:
+        raise PublicServiceContractError(
+            "selection immutable uri cannot contain query parameters"
+        )
+    if not isinstance(value, dict):
+        raise PublicServiceContractError(
+            "selection immutable delivery has an unsupported shape"
+        )
+    mode = _text(
+        value.get("mode"),
+        "selection immutable delivery mode",
+        maximum=32,
+    )
+    if mode == "protected-capability":
+        delivery = _exact(
+            value,
+            {"mode", "authorization"},
+            "selection immutable delivery",
+        )
+        authorization = _exact(
+            delivery["authorization"],
+            {"header", "value"},
+            "selection immutable delivery authorization",
+        )
+        header = _text(
+            authorization["header"],
+            "selection immutable delivery authorization header",
+            maximum=64,
+        )
+        if header != "Limitless-Capability":
+            raise PublicServiceContractError(
+                "selection immutable delivery authorization header is invalid"
+            )
+        return {
+            "mode": mode,
+            "authorization": {
+                "header": header,
+                "value": _text(
+                    authorization["value"],
+                    "selection immutable delivery authorization value",
+                    maximum=43,
+                    pattern=_BASE64URL_32,
+                ),
+            },
+        }
+    if mode != "public-edge":
+        raise PublicServiceContractError(
+            "selection immutable delivery mode is invalid"
+        )
+    delivery = _exact(
+        value,
+        {
+            "mode",
+            "objectRef",
+            "promotionRef",
+            "promotionReceiptDigest",
+            "cacheControl",
+        },
+        "selection immutable delivery",
+    )
+    object_ref = _text(
+        delivery["objectRef"],
+        "selection immutable delivery objectRef",
+        maximum=64,
+        pattern=_PUBLIC_EDGE_OBJECT,
+    )
+    expected_object_ref = (
+        "public-edge-object:"
+        + sha256_json(
+            {
+                "authority": "limitless-public-edge/v1",
+                "artifactDigest": artifact_digest,
+            }
+        )[7:39]
+    )
+    hexadecimal = artifact_digest[7:]
+    if (
+        object_ref != expected_object_ref
+        or parsed.netloc != parsed.hostname
+        or parsed.port is not None
+        or parsed.query
+        or parsed.path != f"/v1/sha256/{hexadecimal[:2]}/{hexadecimal}.bin"
+    ):
+        raise PublicServiceContractError(
+            "selection immutable public edge identity is unbound"
+        )
+    cache_control = _text(
+        delivery["cacheControl"],
+        "selection immutable delivery cacheControl",
+        maximum=64,
+    )
+    if cache_control != _PUBLIC_EDGE_CACHE_CONTROL:
+        raise PublicServiceContractError(
+            "selection immutable delivery cacheControl is invalid"
+        )
+    return {
+        "mode": mode,
+        "objectRef": object_ref,
+        "promotionRef": _text(
+            delivery["promotionRef"],
+            "selection immutable delivery promotionRef",
+            maximum=64,
+            pattern=_PUBLIC_EDGE_PROMOTION,
+        ),
+        "promotionReceiptDigest": _digest(
+            delivery["promotionReceiptDigest"],
+            "selection immutable delivery promotionReceiptDigest",
+        ),
+        "cacheControl": cache_control,
+    }
+
+
 def _selection(
     value: Any,
     *,
@@ -1027,8 +1155,13 @@ def _selection(
     immutable_fields = {"kind", "uri", "revision", "digest"}
     if result_version in _HEADER_AUTHORIZATION_RESULT_VERSIONS and kind == "artifact":
         immutable_fields.add("authorization")
-    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4 and kind == "artifact":
+    if result_version in {
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5,
+    } and kind == "artifact":
         immutable_fields.update({"byteLength", "mediaType", "format"})
+    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5 and kind == "artifact":
+        immutable_fields.add("delivery")
     immutable = _exact(raw_immutable, immutable_fields, "selection immutable")
     if kind not in {"artifact", "git-commit"}:
         raise PublicServiceContractError("selection immutable kind is invalid")
@@ -1046,7 +1179,10 @@ def _selection(
         "revision": revision,
         "digest": _digest(immutable["digest"], "selection immutable digest"),
     }
-    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4 and kind == "artifact":
+    if result_version in {
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
+        SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5,
+    } and kind == "artifact":
         byte_length = _positive_int(
             immutable["byteLength"],
             "selection immutable byteLength",
@@ -1075,6 +1211,12 @@ def _selection(
                 "mediaType": media_type,
                 "format": artifact_format,
             }
+        )
+    if result_version == SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5 and kind == "artifact":
+        normalized_immutable["delivery"] = _artifact_delivery_1_5(
+            immutable["delivery"],
+            artifact_digest=normalized_immutable["digest"],
+            artifact_uri=normalized_immutable["uri"],
         )
     if result_version in _HEADER_AUTHORIZATION_RESULT_VERSIONS and kind == "artifact":
         authorization = _exact(
@@ -1346,7 +1488,7 @@ def build_service_query_result(
         and "authorization" in versioned_selection["immutable"]
     ):
         raise PublicServiceContractError(
-            "legacy service result cannot carry artifact header authorization"
+            "selected service result cannot carry top-level artifact authorization"
         )
     common = {
         "schemaVersion": result_version,
@@ -2167,7 +2309,7 @@ def validate_service_discovery(
         "protocolVersion": _text(discovery["protocolVersion"], "service discovery protocolVersion", maximum=80),
         "apiBaseUrl": _https_url(discovery["apiBaseUrl"], "service discovery apiBaseUrl", allow_path=False),
         "queryVersions": _sorted_texts(discovery["queryVersions"], "service discovery queryVersions", maximum_items=4, maximum_length=80),
-        "resultVersions": _sorted_texts(discovery["resultVersions"], "service discovery resultVersions", maximum_items=4, maximum_length=80),
+        "resultVersions": _sorted_texts(discovery["resultVersions"], "service discovery resultVersions", maximum_items=8, maximum_length=80),
         "outcomeAttemptVersions": _sorted_texts(
             discovery["outcomeAttemptVersions"], "service discovery outcomeAttemptVersions",
             maximum_items=4, maximum_length=80,

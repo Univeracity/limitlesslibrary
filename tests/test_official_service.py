@@ -24,7 +24,6 @@ from limitless_library.installation_identity_contracts import (
 )
 from limitless_library.official_service import (
     OfficialServiceActivationError,
-    OfficialServiceNotConfiguredError,
     OfficialServiceUnavailableError,
     activate_service_from_locator,
     activation_details,
@@ -423,9 +422,17 @@ def test_interrupted_session_preserves_identity_and_retries_without_reregisterin
     assert load_json(identity_path)["installationId"] == retained["installationId"]
 
 
-def test_unconfigured_source_build_does_not_invent_official_identity() -> None:
-    with pytest.raises(OfficialServiceNotConfiguredError, match="continue locally"):
-        load_bundled_official_locator()
+def test_release_bundles_the_content_addressed_official_identity() -> None:
+    locator = load_bundled_official_locator()
+
+    assert locator["serviceId"] == "service:limitless-library"
+    assert locator["profileUrl"] == (
+        "https://api.limitlesslibrary.com/.well-known/limitless-service-profile/1.0.json"
+    )
+    assert locator["profileDigest"] == (
+        "sha256:6ea3ab4baa7a4f0fff6304d3ea352400f9c08af5bb8aaa3eed35d9f5a2ba33b8"
+    )
+    assert locator["rootKey"]["keyId"] == "key:limitless-root-2026-01"
 
 
 def test_default_state_path_is_per_user_and_requires_absolute_configuration() -> None:

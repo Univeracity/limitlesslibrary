@@ -40,6 +40,7 @@ from limitless_library.service_connector import (
 )
 from limitless_library.service_contracts import (
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_4,
+    SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5,
     build_service_discovery,
     build_service_query,
     build_service_query_result,
@@ -530,6 +531,99 @@ def _streaming_artifact_fixture(
     return connector, transport, query, result, artifact, tmp_path / "streamed.bin"
 
 
+def _delivery_1_5_fixture(
+    tmp_path: Path,
+    *,
+    mode: str,
+) -> tuple[ServiceConnector, StreamingArtifactTransport, dict[str, Any], dict[str, Any], Path]:
+    corpus = load_json(CORPUS)
+    artifact = build_exact_file_bundle({"payload.bin": b"delivery-1.5"})
+    artifact_digest = sha256_bytes(artifact)
+    hexadecimal = artifact_digest[7:]
+    uri = (
+        f"https://objects.limitlesslibrary.com/v1/sha256/{hexadecimal[:2]}/{hexadecimal}.bin"
+        if mode == "public-edge"
+        else "https://api.limitlesslibrary.com/v1/protected/deliveries/delivery:test"
+    )
+    query = build_service_query(
+        request_id=f"request:artifact-delivery-{mode}",
+        objective=corpus["query"]["objective"],
+        receiver_context=corpus["query"]["receiverContext"],
+        requested_audiences=corpus["query"]["requestedAudiences"],
+        requested_treatments=["exact-component"],
+        execution_mode="service",
+        history_mode="local-only",
+        client_name="limitless-library-delivery-test",
+        client_version="0.1.0",
+        issued_at=AT.replace(second=0),
+        supported_result_version=SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5,
+    )
+    delivery: dict[str, Any]
+    if mode == "public-edge":
+        delivery = {
+            "mode": "public-edge",
+            "objectRef": "public-edge-object:" + sha256_json(
+                {"authority": "limitless-public-edge/v1", "artifactDigest": artifact_digest}
+            )[7:39],
+            "promotionRef": "public-edge-promotion:" + "4" * 32,
+            "promotionReceiptDigest": "sha256:" + "5" * 64,
+            "cacheControl": "public, max-age=31536000, immutable",
+        }
+    else:
+        delivery = {
+            "mode": "protected-capability",
+            "authorization": {
+                "header": "Limitless-Capability",
+                "value": "A" * 43,
+            },
+        }
+    selection = deepcopy(corpus["result"]["selection"])
+    legacy = selection["immutable"]
+    selection["immutable"] = {
+        "kind": "artifact",
+        "uri": uri,
+        "revision": legacy["revision"],
+        "digest": artifact_digest,
+        "byteLength": len(artifact),
+        "mediaType": "application/vnd.limitless.exact-file-bundle+json",
+        "format": "limitless.exact-file-bundle/1.0",
+        "delivery": delivery,
+    }
+    signer = InstallationSigner.generate()
+    result = build_service_query_result(
+        query=query,
+        decision_ref=f"decision:artifact-delivery-{mode}",
+        authorized_scopes=corpus["result"]["authorizedAudiences"],
+        policy_digest=corpus["discovery"]["dataUsePolicy"]["digest"],
+        treatment="exact-component",
+        selection=selection,
+        next_action=corpus["result"]["nextAction"],
+        index_generation=14,
+        issued_at=AT.replace(second=0),
+        signer=signer,
+        ttl_seconds=120,
+    )
+    transport = StreamingArtifactTransport(uri, artifact, artifact_digest)
+    connector = ServiceConnector(
+        _profile(corpus, token="test-access-token-value"),
+        transport=transport,
+        clock=lambda: AT,
+    )
+    connector._cached = VerifiedService(
+        discovery={**corpus["discovery"], "resultVersions": [SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5]},
+        root_transitions={
+            "schemaVersion": "limitless.service-root-key-transition-set/1.0",
+            "serviceId": corpus["discovery"]["serviceId"],
+            "transitions": [],
+            "latestSequence": 0,
+            "latestTransitionDigest": None,
+        },
+        result_keys={signer.key_id: signer.public_bytes()},
+    )
+    connector._cached_until = float("inf")
+    return connector, transport, query, result, tmp_path / f"delivery-{mode}.bin"
+
+
 def test_opted_in_query_verifies_discovery_request_and_signed_result() -> None:
     corpus = load_json(CORPUS)
     transport = MemoryTransport(corpus)
@@ -760,7 +854,7 @@ def test_query_builder_negotiates_current_result_from_current_discovery() -> Non
     )
 
     assert query["client"]["supportedResults"] == [
-        "limitless.service-query-result/1.4"
+        "limitless.service-query-result/1.5"
     ]
 
 
@@ -1009,6 +1103,23 @@ def test_signed_artifact_is_fetched_with_header_authority_and_staged_without_sec
     public_output = canonical_json_bytes(staged).decode("utf-8")
     assert "test-access-token-value" not in public_output
     assert result["selection"]["immutable"]["authorization"]["value"] not in public_output
+
+
+@pytest.mark.parametrize("mode", ["public-edge", "protected-capability"])
+def test_result_1_5_enforces_delivery_lane_headers(tmp_path: Path, mode: str) -> None:
+    connector, transport, query, result, destination = _delivery_1_5_fixture(tmp_path, mode=mode)
+
+    staged = connector.fetch_selected_artifact(query=query, result=result, destination=destination)
+
+    assert destination.exists()
+    assert staged["schemaVersion"] == "limitless.staged-service-artifact/1.1"
+    sent = transport.calls[0]["headers"]
+    if mode == "public-edge":
+        assert "authorization" not in sent
+        assert "Limitless-Capability" not in sent
+    else:
+        assert sent["authorization"] == "Bearer test-access-token-value"
+        assert sent["Limitless-Capability"] == "A" * 43
 
 
 def test_result_1_4_streams_large_exact_bundle_to_no_replace_staging(tmp_path: Path) -> None:
