@@ -18,6 +18,7 @@
   <a href="#quick-start">Quick start</a> ·
   <a href="#how-verified-reuse-works">Lifecycle</a> ·
   <a href="#mcp">MCP</a> ·
+  <a href="#connect-an-agent">Connect an agent</a> ·
   <a href="#optional-managed-service">Service</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -179,6 +180,34 @@ receiver-local operation.
 
 Python callers can use `query_local(...)` or `McpStdioConnector`. See
 [Protocol](docs/PROTOCOL.md).
+
+## Connect an agent
+
+Limitless Library supports Antigravity CLI (`agy`) outside Omarchy and other
+host integrations. Connect it to an explicit local catalog with one command:
+
+```bash
+limitless agent-connect antigravity --catalog /absolute/path/to/catalog
+```
+
+The command adds one named `limitless-library` stdio server to Antigravity's
+documented MCP profile. It uses the exact Python environment that ran
+`limitless`, so there is no separate executable to find or PATH assumption to
+maintain. Restart Antigravity CLI, then its MCP instructions and the
+`limitless_query_before_work` tool are available before material work.
+
+```bash
+limitless agent-status antigravity
+limitless agent-disconnect antigravity
+```
+
+The integration preserves all unrelated MCP entries. It keeps a small local
+ownership record containing only the profile path and its own command/args,
+and disconnect removes an entry only if those exact values still match. A
+pre-migration Antigravity installation uses its existing legacy profile; a
+migrated or new installation uses Antigravity's current global profile. This
+local connection neither activates the managed service nor sends a query until
+the agent calls the tool.
 
 ## Optional managed service
 

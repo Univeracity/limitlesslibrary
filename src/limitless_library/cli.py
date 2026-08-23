@@ -8,6 +8,12 @@ import os
 import sys
 from pathlib import Path
 
+from .agent_integration import (
+    AgentIntegrationError,
+    antigravity_connection_status,
+    connect_antigravity,
+    disconnect_antigravity,
+)
 from .catalog import CatalogError, LocalCatalog, seal_capsule
 from .contracts import ContractError, load_json, write_new_json
 from .demo import DemoError, format_demo, run_demo
@@ -98,6 +104,25 @@ def _parser() -> argparse.ArgumentParser:
     query.add_argument("--catalog", type=Path, required=True)
     query.add_argument("--request", type=Path, required=True)
     query.add_argument("--output", type=Path)
+
+    agent_connect = subparsers.add_parser(
+        "agent-connect",
+        help="connect a supported agent to the local Limitless MCP server",
+    )
+    agent_connect.add_argument("agent", choices=("antigravity", "agy"))
+    agent_connect.add_argument("--catalog", type=Path, required=True)
+
+    agent_status = subparsers.add_parser(
+        "agent-status",
+        help="inspect a supported agent's local Limitless MCP connection",
+    )
+    agent_status.add_argument("agent", choices=("antigravity", "agy"))
+
+    agent_disconnect = subparsers.add_parser(
+        "agent-disconnect",
+        help="remove only a plugin-owned supported-agent MCP connection",
+    )
+    agent_disconnect.add_argument("agent", choices=("antigravity", "agy"))
 
     subparsers.add_parser(
         "service-activate",
@@ -222,6 +247,12 @@ def main() -> None:
                 write_new_json(args.output, decision)
             else:
                 _print(decision)
+        elif args.command == "agent-connect":
+            _print(connect_antigravity(args.catalog))
+        elif args.command == "agent-status":
+            _print(antigravity_connection_status())
+        elif args.command == "agent-disconnect":
+            _print(disconnect_antigravity())
         elif args.command == "service-activate":
             activate_official_service()
             _print(activation_details())
@@ -322,6 +353,7 @@ def main() -> None:
             _print(receipt)
     except (
         AdoptionError,
+        AgentIntegrationError,
         CatalogError,
         ContractError,
         DemoError,

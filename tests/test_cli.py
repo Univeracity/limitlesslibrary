@@ -246,6 +246,44 @@ def test_service_query_accepts_an_exact_request_and_writes_no_implicit_state(
     assert json.loads(capsys.readouterr().out) == {"verifiedRequest": {"query": "bounded"}}
 
 
+def test_agent_connect_uses_the_general_antigravity_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    catalog = tmp_path / "catalog"
+    calls: list[Path] = []
+    monkeypatch.setattr(sys, "argv", ["limitless", "agent-connect", "antigravity", "--catalog", str(catalog)])
+    monkeypatch.setattr(
+        cli,
+        "connect_antigravity",
+        lambda selected: calls.append(selected) or {"status": "connected", "agent": "antigravity"},
+    )
+
+    cli.main()
+
+    assert calls == [catalog]
+    assert json.loads(capsys.readouterr().out) == {"agent": "antigravity", "status": "connected"}
+
+
+def test_agent_status_and_disconnect_use_the_general_antigravity_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["limitless", "agent-status", "agy"])
+    monkeypatch.setattr(cli, "antigravity_connection_status", lambda: {"status": "connected"})
+
+    cli.main()
+
+    assert json.loads(capsys.readouterr().out) == {"status": "connected"}
+    monkeypatch.setattr(sys, "argv", ["limitless", "agent-disconnect", "antigravity"])
+    monkeypatch.setattr(cli, "disconnect_antigravity", lambda: {"status": "disconnected"})
+
+    cli.main()
+
+    assert json.loads(capsys.readouterr().out) == {"status": "disconnected"}
+
+
 def test_service_query_can_stage_an_exact_artifact_without_printing_the_raw_result(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
