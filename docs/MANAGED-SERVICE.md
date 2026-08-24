@@ -40,10 +40,11 @@ authority, and reuses a live session; an expired session renews through one
 signed POST. An authority change requires a separate, explicit replacement
 decision. Availability failure leaves the local-only default unchanged.
 
-This source release intentionally ships without a live locator. Until an owner
-publishes one through a supported release, `service-activate` reports that the
-service is not configured and local use continues. The repository never
-invents an official identity or silently discovers an endpoint.
+Supported releases ship a content-addressed official locator for
+`api.limitlesslibrary.com`. Source trees and compatible third-party builds may
+omit it; in that case `service-activate` reports that the service is not
+configured and local use continues. The client never invents an official
+identity or silently discovers an endpoint.
 
 ## Inspect and query
 
@@ -168,13 +169,15 @@ and request identity, so an interrupted transfer cannot silently become another
 release.
 
 The client sends the signed policy acceptance and intent as bounded JSON,
-receives a signed plan, and streams only objects the plan says are missing.
+receives a signed plan and short-lived content authorization, and streams only
+objects the plan says are missing.
 Each upload uses a query-free path, `application/octet-stream`, exact length
 and digest headers, and the short-lived anonymous bearer. It rehashes the open
 file while sending; the service reauthorizes the current admission state,
 hashes and counts the stream into an uncommitted object, and publishes only an
-exact put-if-absent result. The client then repeats negotiation to confirm
-store presence and reports the publisher-visible admission state. Source paths,
+exact put-if-absent result. It reports active, pending, quarantined, or rejected
+admission as a publication result rather than conflating review state with a
+network failure. Source paths,
 private keys, bearers, and workspace contents outside the draft never enter
 the submission records.
 
@@ -189,9 +192,9 @@ binds that descriptor into intent `1.2`; signed discovery advertises the
 generation. Older releases stay opaque rather than being retroactively
 classified from their bytes or provenance.
 
-The bundled example is illustrative. Publishing it requires a supported
-release with an official locator and an operating service; source builds remain
-local-only. The open client validates the public wire lifecycle but does not
+The bundled example is directly publishable from a supported release after the
+publisher reviews and accepts the currently advertised policy digest. The open
+client validates the public wire lifecycle but does not
 contain the private admission engine, ranking service, or managed storage.
 
 The returned owner-only state is also the durable handle for follow-up:

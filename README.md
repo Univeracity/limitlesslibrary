@@ -232,13 +232,15 @@ limitless service-query \
 
 ```
 
-The service currently accepts anonymous activation, queries, and outcome
-evidence. Public contribution contracts are included for interoperability, but
-publication intake remains disabled until the advertised publication policy is
-activated. Advanced integrations may still pass an owner-reviewed alternate
-profile with `--profile`. The client validates root rotation, signed discovery,
-policy continuity, query binding, compatibility, and the signed result before
-returning it. Remote failure yields control back to local reuse. Connecting
+The service accepts anonymous activation, queries, outcome evidence, and
+public contributions. A contribution can contain an independently authored
+source-free method or a canonical exact file bundle that keeps its declared
+source license and notices. Both enter protected staging before admission;
+only admitted releases become globally queryable. Advanced integrations may
+still pass an owner-reviewed alternate profile with `--profile`. The client
+validates root rotation, signed discovery, policy continuity, query binding,
+compatibility, and the signed result before returning it. Remote failure yields
+control back to local reuse. Connecting
 alone never publishes a local capsule or silently installs selected work.
 Exact remote artifacts move only after the caller supplies
 `--artifact-output`: public immutable objects need no credential, while
@@ -248,14 +250,17 @@ without overwrite.
 Staging is not parsing, installation, or proof of adoption; those remain
 receiver-adapter responsibilities.
 
-Publication is likewise explicit. `service-publish` accepts a small draft that
-names only the files the user chose, resolves their paths relative to the draft
-rather than the current directory, and prepares a signed, resumable local
-state file before network transfer. It accepts the exact advertised policy only
-with the command-line confirmation above, negotiates digests first, streams
-only missing bytes, retries the immutable submission, and returns its admission
-state. The same owner-only state supports later status inspection and explicit
-withdrawal without retaining credentials in the draft or command line. It does
+Publication is explicit but account-free. `service-publish` accepts a small
+draft that names only the files the user chose, resolves their paths relative
+to the draft rather than the current directory, and prepares a signed,
+resumable local state file before network transfer. It accepts the exact
+advertised policy only with the command-line confirmation above, negotiates
+digests first, streams only missing bytes, retries the immutable submission,
+and returns its admission state. The same owner-only state supports later
+status inspection and explicit
+withdrawal without retaining credentials in the draft or command line. A
+quarantined or rejected contribution is reported honestly without being
+mistaken for a transport failure. It does
 not scan or upload a workspace. Artifact sources must already be canonical
 `limitless.exact-file-bundle/1.0` payloads; the client verifies that shape
 locally and binds it into the current signed publication intent. See the

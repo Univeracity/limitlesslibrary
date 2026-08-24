@@ -1155,6 +1155,9 @@ def test_signed_artifact_is_fetched_with_header_authority_and_staged_without_sec
 @pytest.mark.parametrize("mode", ["public-edge", "protected-capability"])
 def test_result_1_5_enforces_delivery_lane_headers(tmp_path: Path, mode: str) -> None:
     connector, transport, query, result, destination = _delivery_1_5_fixture(tmp_path, mode=mode)
+    if mode == "public-edge":
+        transport.headers["content-type"] = "application/octet-stream"
+        transport.headers.pop("x-limitless-artifact-digest")
 
     staged = connector.fetch_selected_artifact(query=query, result=result, destination=destination)
 

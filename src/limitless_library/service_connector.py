@@ -938,6 +938,7 @@ class ServiceConnector:
         immutable: dict[str, Any],
         authorization: dict[str, Any] | None,
         destination: str | Path,
+        public_edge: bool = False,
     ) -> dict[str, Any]:
         download = getattr(self._transport, "download_file", None)
         if not callable(download):
@@ -990,7 +991,12 @@ class ServiceConnector:
                 if response.status != 200:
                     raise ServiceConnectorError("managed service rejected the artifact request")
                 headers = self._response_headers(response.headers)
-                if headers.get("content-type") != immutable["mediaType"]:
+                accepted_content_types = (
+                    {immutable["mediaType"], _ARTIFACT_CONTENT_TYPE}
+                    if public_edge
+                    else {immutable["mediaType"]}
+                )
+                if headers.get("content-type") not in accepted_content_types:
                     raise ServiceConnectorError("service artifact content type is invalid")
                 declared = headers.get("content-length")
                 if declared is None or _CONTENT_LENGTH.fullmatch(declared) is None:
@@ -999,7 +1005,10 @@ class ServiceConnector:
                 if declared_length != immutable["byteLength"] or response.byte_length != immutable["byteLength"]:
                     raise ServiceConnectorError("service artifact content length differs")
                 expected_digest = immutable["digest"]
-                if headers.get("x-limitless-artifact-digest") != expected_digest:
+                declared_digest = headers.get("x-limitless-artifact-digest")
+                if (not public_edge and declared_digest != expected_digest) or (
+                    public_edge and declared_digest not in {None, expected_digest}
+                ):
                     raise ServiceConnectorError("service artifact digest header differs")
                 if response.content_digest != expected_digest:
                     raise ServiceConnectorError("service artifact bytes differ from the signed result")
@@ -1059,6 +1068,7 @@ class ServiceConnector:
                 selection=selection,
                 immutable=immutable,
                 authorization=authorization,
+                public_edge=delivery.get("mode") == "public-edge",
                 destination=destination,
             )
         if not isinstance(authorization, dict):

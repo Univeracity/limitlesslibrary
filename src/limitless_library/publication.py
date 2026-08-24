@@ -394,6 +394,7 @@ def publish_draft(
     plan = connector.negotiate_submission(intent, publisher_public_key=signer.public_bytes())
     uploaded: list[dict[str, Any]] = []
     if plan["state"] == "needs-content":
+        connector.authorize_submission_content(intent=intent, plan=plan)
         sources = {(item["role"], item["digest"], item["byteLength"]): item["path"] for item in prepared["sources"]}
         for descriptor in plan["requiredObjects"]:
             key = (
@@ -412,10 +413,15 @@ def publish_draft(
                     source=Path(path),
                 )
             )
-        plan = connector.negotiate_submission(intent, publisher_public_key=signer.public_bytes())
-    if plan["state"] != "accepted":
-        raise PublicationError("service did not accept the content-complete submission")
-    status = connector.submission_status(plan["submissionRef"])
+        status = connector.submission_status(plan["submissionRef"])
+        if status["state"] in {"active", "pending"}:
+            plan = connector.negotiate_submission(intent, publisher_public_key=signer.public_bytes())
+        elif status["state"] not in {"pending", "quarantined", "rejected"}:
+            raise PublicationError("service returned an invalid post-upload admission state")
+    else:
+        status = connector.submission_status(plan["submissionRef"])
+    if status["state"] == "active" and plan["state"] != "accepted":
+        raise PublicationError("service did not confirm the active content-complete submission")
     return {
         "schemaVersion": "limitless.publication-result/1.0",
         "submissionRef": plan["submissionRef"],
@@ -505,11 +511,7 @@ def _followup_status(
         publisher=publisher,
     )
     intent = state["intent"]
-    reference = public_submission_ref(
-        tenant_id=publisher["authorityId"],
-        publisher_id=publisher["publisherId"],
-        request_id=intent["requestId"],
-    )
+    reference = public_submission_ref(intent_digest=intent["intentDigest"])
     status = connector.submission_status(reference)
     return selected, state, status
 

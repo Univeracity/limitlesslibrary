@@ -710,11 +710,19 @@ def build_submission_plan(
 
 def public_submission_ref(
     *,
-    tenant_id: str,
-    publisher_id: str,
-    request_id: str,
+    intent_digest: str | None = None,
+    tenant_id: str | None = None,
+    publisher_id: str | None = None,
+    request_id: str | None = None,
 ) -> str:
-    """Derive the service-neutral identity for one publisher request."""
+    """Derive the current intent-bound or legacy service-neutral identity."""
+
+    if intent_digest is not None:
+        if any(item is not None for item in (tenant_id, publisher_id, request_id)):
+            raise PublicSubmissionContractError("public submission identity is ambiguous")
+        return "submission:" + _digest(intent_digest, "public submission intent digest")[7:39]
+    if tenant_id is None or publisher_id is None or request_id is None:
+        raise PublicSubmissionContractError("public submission identity is incomplete")
 
     binding = {
         "tenantId": _text(

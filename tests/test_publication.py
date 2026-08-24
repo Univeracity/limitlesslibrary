@@ -9,6 +9,7 @@ import pytest
 from limitless_library.contracts import canonical_json_bytes, sha256_json, strict_json_loads
 from limitless_library.exact_file_bundle import build_exact_file_bundle
 from limitless_library.public_submission_contracts import (
+    build_content_transfer_grant,
     build_submission_plan,
     public_submission_ref,
 )
@@ -37,6 +38,7 @@ class PublicationWorkflowTransport:
         self.intent: dict | None = None
         self.uploaded: set[str] = set()
         self.upload_calls = 0
+        self.authorization_calls = 0
         self.admission_state = "pending"
         self.release_ref = {
             "releaseId": "release:" + "7" * 32,
@@ -46,11 +48,7 @@ class PublicationWorkflowTransport:
 
     def submission_ref(self) -> str:
         assert self.intent is not None
-        return public_submission_ref(
-            tenant_id=self.intent["publisher"]["authorityId"],
-            publisher_id=self.intent["publisher"]["publisherId"],
-            request_id=self.intent["requestId"],
-        )
+        return public_submission_ref(intent_digest=self.intent["intentDigest"])
 
     def plan(self, known: set[str]) -> dict:
         assert self.intent is not None
@@ -87,6 +85,20 @@ class PublicationWorkflowTransport:
             assert body is not None
             self.intent = strict_json_loads(body.decode("utf-8"))
             value = self.plan(self.uploaded)
+        elif url.endswith("/content-authorizations"):
+            assert self.intent is not None
+            self.authorization_calls += 1
+            plan = self.plan(set())
+            value = build_content_transfer_grant(
+                intent=self.intent,
+                plan=plan,
+                tenant_id=self.intent["publisher"]["authorityId"],
+                publisher_id=self.intent["publisher"]["publisherId"],
+                audience="service:limitless-content-ingest",
+                objects=plan["requiredObjects"],
+                issued_at=NOW,
+                signer=self.signer,
+            )
         elif url.endswith("/admission-status"):
             assert self.intent is not None
             value = {
@@ -310,6 +322,7 @@ def test_one_command_publication_is_resumable_and_cwd_independent(tmp_path: Path
     assert second["submissionRef"] == first["submissionRef"]
     assert second["uploadedObjects"] == []
     assert transport.upload_calls == 1
+    assert transport.authorization_calls == 1
     assert state.read_bytes() == original
     assert state.stat().st_mode & 0o777 == 0o600
 
@@ -351,6 +364,27 @@ def test_artifact_publication_uses_current_format_aware_intent(tmp_path: Path) -
             "mediaType": "application/vnd.limitless.exact-file-bundle+json",
         }
     ]
+
+
+def test_quarantined_publication_reports_intake_without_reupload(tmp_path: Path) -> None:
+    connector, transport, signer, publisher = _fixture()
+    transport.admission_state = "quarantined"
+    draft = _write_draft(tmp_path)
+
+    published = publish_draft(
+        connector,
+        draft_path=draft,
+        state_path=None,
+        signer=signer,
+        publisher=publisher,
+        accepted_publication_policy_digest=transport.policy["digest"],
+        now=NOW,
+    )
+
+    assert published["admissionState"] == "quarantined"
+    assert published["planState"] == "needs-content"
+    assert transport.upload_calls == 1
+    assert transport.authorization_calls == 1
 
 
 def test_publication_requires_exact_reviewed_policy_digest(tmp_path: Path) -> None:
