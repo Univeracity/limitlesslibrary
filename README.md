@@ -11,7 +11,7 @@
   <a href="https://github.com/Univeracity/limitlesslibrary/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/Univeracity/limitlesslibrary/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Python 3.11 or newer" src="https://img.shields.io/badge/python-3.11%2B-111111">
   <a href="docs/PROTOCOL.md"><img alt="MCP 2026-07-28" src="https://img.shields.io/badge/MCP-2026--07--28-111111"></a>
-  <img alt="Pre-alpha" src="https://img.shields.io/badge/status-pre--alpha-6b7280">
+  <img alt="Preview" src="https://img.shields.io/badge/status-preview-6b7280">
 </p>
 
 <p align="center">
