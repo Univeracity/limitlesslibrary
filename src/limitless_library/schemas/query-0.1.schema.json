@@ -7,6 +7,7 @@
   "required": ["schemaVersion", "taskKind", "receiver", "requestedUse", "tenantScope", "evaluatedAt"],
   "properties": {
     "schemaVersion": {"const": "limitless.query/0.1"},
+    "objective": {"type": "string", "minLength": 1, "maxLength": 480},
     "taskKind": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
     "receiver": {
       "type": "object", "additionalProperties": false, "required": ["constraints", "toolchain"],

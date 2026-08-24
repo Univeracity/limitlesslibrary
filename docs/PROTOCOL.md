@@ -26,8 +26,11 @@ An offer is eligible only when all of the following hold:
 4. Every offer constraint is present in the receiver constraints.
 5. Every required toolchain value is in the offer's allowed value list.
 
-The unique highest-priority eligible offer wins. A tie abstains. Exact offers
-produce `reuse`/`exact-adoption`; method offers produce
+The unique highest-priority eligible offer wins. When the optional local
+`objective` is present, a unique positive lexical match may break a tie among
+only the highest-priority eligible offers; an absent, unmatched, or still-tied
+objective abstains. Objective relevance never overrides rights, compatibility,
+scope, state, or explicit priority. Exact offers produce `reuse`/`exact-adoption`; method offers produce
 `instantiate`/`method-guided`. Abstention contains no candidate details.
 
 ## MCP

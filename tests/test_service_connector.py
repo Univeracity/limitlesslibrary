@@ -35,6 +35,7 @@ from limitless_library.service_connector import (
     ServiceProfile,
     ServiceStreamResponse,
     ServiceUnavailableError,
+    ServiceUsageExceededError,
     UrllibServiceTransport,
     VerifiedService,
 )
@@ -62,6 +63,7 @@ class MemoryTransport:
         self.status = 200
         self.result = corpus["result"]
         self.response_headers = {"content-type": "application/json"}
+        self.error_body: dict[str, Any] = {"error": "unavailable"}
         self.calls: list[dict[str, Any]] = []
 
     def request(
@@ -88,7 +90,7 @@ class MemoryTransport:
             return ServiceHttpResponse(
                 status=self.status,
                 headers={"content-type": "application/json"},
-                body=canonical_json_bytes({"error": "unavailable"}),
+                body=canonical_json_bytes(self.error_body),
             )
         if url.endswith("/.well-known/limitless-root-transitions"):
             value = {
@@ -562,9 +564,8 @@ def _delivery_1_5_fixture(
     if mode == "public-edge":
         delivery = {
             "mode": "public-edge",
-            "objectRef": "public-edge-object:" + sha256_json(
-                {"authority": "limitless-public-edge/v1", "artifactDigest": artifact_digest}
-            )[7:39],
+            "objectRef": "public-edge-object:"
+            + sha256_json({"authority": "limitless-public-edge/v1", "artifactDigest": artifact_digest})[7:39],
             "promotionRef": "public-edge-promotion:" + "4" * 32,
             "promotionReceiptDigest": "sha256:" + "5" * 64,
             "cacheControl": "public, max-age=31536000, immutable",
@@ -737,6 +738,56 @@ def test_remote_unavailability_explicitly_returns_control_to_local_reuse() -> No
         connector.inspect()
 
 
+def test_free_usage_limit_is_distinct_from_service_unavailability() -> None:
+    corpus = load_json(CORPUS)
+    transport = MemoryTransport(corpus)
+    transport.status = 429
+    transport.error_body = {
+        "error": "free-usage-exceeded",
+        "resetAt": "2026-08-20T22:01:00Z",
+        "upgradeUrl": "https://limitlesslibrary.com/#contact",
+    }
+    connector = ServiceConnector(
+        _profile(corpus),
+        transport=transport,
+        clock=lambda: AT,
+    )
+
+    with pytest.raises(ServiceUsageExceededError) as raised:
+        connector.inspect()
+
+    assert raised.value.reset_at == "2026-08-20T22:01:00Z"
+    assert raised.value.upgrade_url == "https://limitlesslibrary.com/#contact"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"error": "rate-limited"},
+        {
+            "error": "free-usage-exceeded",
+            "resetAt": "2026-08-20T22:01:00Z",
+            "upgradeUrl": "https://attacker.example/upgrade",
+        },
+    ],
+)
+def test_untrusted_429_details_remain_generic_unavailability(body: dict[str, Any]) -> None:
+    corpus = load_json(CORPUS)
+    transport = MemoryTransport(corpus)
+    transport.status = 429
+    transport.error_body = body
+    connector = ServiceConnector(
+        _profile(corpus),
+        transport=transport,
+        clock=lambda: AT,
+    )
+
+    with pytest.raises(ServiceUnavailableError, match="continue locally") as raised:
+        connector.inspect()
+
+    assert not isinstance(raised.value, ServiceUsageExceededError)
+
+
 def test_json_endpoints_retain_their_strict_content_type_boundary() -> None:
     corpus = load_json(CORPUS)
     transport = MemoryTransport(corpus)
@@ -800,9 +851,7 @@ def test_query_builder_emits_only_the_current_public_policy_vocabulary() -> None
     assert query["executionMode"] == "service"
     assert query["historyMode"] == "local-only"
     assert query["requestedAudiences"] == ["circle", "public"]
-    assert query["client"]["supportedResults"] == [
-        "limitless.service-query-result/1.3"
-    ]
+    assert query["client"]["supportedResults"] == ["limitless.service-query-result/1.3"]
     assert "dataUseMode" not in query
     assert "requestedScopes" not in query
     assert "exchange" not in canonical_json_bytes(query).decode("utf-8")
@@ -853,9 +902,7 @@ def test_query_builder_negotiates_current_result_from_current_discovery() -> Non
         receiver_context=corpus["query"]["receiverContext"],
     )
 
-    assert query["client"]["supportedResults"] == [
-        "limitless.service-query-result/1.5"
-    ]
+    assert query["client"]["supportedResults"] == ["limitless.service-query-result/1.5"]
 
 
 def test_legacy_profile_is_mapped_without_re_emitting_deprecated_vocabulary() -> None:

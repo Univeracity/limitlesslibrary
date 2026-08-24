@@ -33,7 +33,8 @@ workspace discovery or connection as publication consent.
 - Catalog policy checks use, tenant scope, lifecycle state, receiver
   constraints, and declared toolchain compatibility before selection.
 - Equal-priority ambiguity and ineligibility produce the same non-disclosing
-  abstention shape.
+  abstention shape unless an optional local objective supplies one unique
+  positive lexical tie-break among otherwise-equal eligible offers.
 - Exact installation preflights all source and target paths, rejects symlinks,
   refuses overwrite, and removes files created by a failed attempt.
 - Receiver verifiers are digest-bound and run with no network, no inherited

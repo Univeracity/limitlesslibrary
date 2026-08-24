@@ -147,6 +147,28 @@ class PublicServiceLifecycleConformanceTests(unittest.TestCase):
                 with self.assertRaises(PublicServiceContractError):
                     self._validate_record(case["record"], candidate, corpus=corpus, at=at)
 
+    def test_any_platform_and_architecture_are_receiver_wildcards(self) -> None:
+        corpus = self._corpus()
+        at = datetime.fromisoformat(corpus["expected"]["validAt"]).astimezone(UTC)
+        result = deepcopy(corpus["result"])
+        result["selection"]["compatibility"]["platforms"] = ["any"]
+        result["selection"]["compatibility"]["architectures"] = ["any"]
+        unsigned = {
+            key: value
+            for key, value in result.items()
+            if key not in {"resultDigest", "signature"}
+        }
+        result["resultDigest"] = sha256_json(unsigned)
+
+        checked = validate_service_query_result(
+            result,
+            expected_query=corpus["query"],
+            at=at,
+        )
+
+        self.assertEqual(["any"], checked["selection"]["compatibility"]["platforms"])
+        self.assertEqual(["any"], checked["selection"]["compatibility"]["architectures"])
+
     def test_short_lived_records_expire_and_unknown_service_keys_fail_closed(self) -> None:
         corpus = self._corpus()
         expired = datetime.fromisoformat(corpus["expected"]["validAt"]).astimezone(UTC) + timedelta(minutes=6)

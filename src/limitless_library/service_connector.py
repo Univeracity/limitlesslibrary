@@ -20,7 +20,7 @@ import time
 from base64 import urlsafe_b64decode
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from tempfile import mkstemp
@@ -98,7 +98,9 @@ _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9._:-]{0,199}$")
 _TOKEN = re.compile(r"^[\x21-\x7e]{16,4096}$")
 _JSON_CONTENT_TYPE = re.compile(r"^application/json(?:\s*;\s*charset=(?:utf-8|UTF-8))?$")
 _CONTENT_LENGTH = re.compile(r"^(?:0|[1-9][0-9]{0,9})$")
+_WHOLE_SECOND = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _ARTIFACT_CONTENT_TYPE = "application/octet-stream"
+_USAGE_UPGRADE_URL = "https://limitlesslibrary.com/#contact"
 MAX_REMOTE_ARTIFACT_BYTES = 128 * 1024
 MAX_REMOTE_STREAMED_ARTIFACT_BYTES = 64 * 1024 * 1024
 MAX_PUBLICATION_STATUS_BYTES = 4 * 1024
@@ -110,6 +112,15 @@ class ServiceConnectorError(RuntimeError):
 
 class ServiceUnavailableError(ServiceConnectorError):
     """The opted-in service is unavailable; local reuse remains available."""
+
+
+class ServiceUsageExceededError(ServiceUnavailableError):
+    """The installation's free managed-service allowance is exhausted."""
+
+    def __init__(self, *, reset_at: str, upgrade_url: str) -> None:
+        super().__init__("free managed-service usage exceeded; continue locally")
+        self.reset_at = reset_at
+        self.upgrade_url = upgrade_url
 
 
 @dataclass(frozen=True)
@@ -578,9 +589,7 @@ class UrllibServiceTransport:
                 try:
                     written = destination.write(chunk)
                 except OSError as error:
-                    raise ServiceConnectorError(
-                        "service download destination write failed"
-                    ) from error
+                    raise ServiceConnectorError("service download destination write failed") from error
                 if written != len(chunk):
                     raise ServiceConnectorError("service download destination write differs")
                 hasher.update(chunk)
@@ -698,7 +707,35 @@ class ServiceConnector:
         )
         if response.status in {401, 403}:
             raise ServiceConnectorError("managed service authorization failed")
-        if response.status in {429, 500, 502, 503, 504}:
+        if response.status == 429:
+            try:
+                response_headers = self._response_headers(response.headers)
+                if _JSON_CONTENT_TYPE.fullmatch(response_headers.get("content-type", "")) is None:
+                    raise ValueError("invalid content type")
+                value = strict_json_loads(response.body.decode("utf-8"))
+                if not isinstance(value, dict) or set(value) != {
+                    "error",
+                    "resetAt",
+                    "upgradeUrl",
+                }:
+                    raise ValueError("invalid usage response")
+                reset_at = value["resetAt"]
+                upgrade_url = value["upgradeUrl"]
+                if (
+                    value["error"] != "free-usage-exceeded"
+                    or not isinstance(reset_at, str)
+                    or _WHOLE_SECOND.fullmatch(reset_at) is None
+                    or upgrade_url != _USAGE_UPGRADE_URL
+                ):
+                    raise ValueError("invalid usage response")
+                reset_time = datetime.fromisoformat(reset_at)
+                now = self._now()
+                if reset_time < now - timedelta(minutes=5) or reset_time > now + timedelta(days=366):
+                    raise ValueError("invalid usage reset")
+            except (UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+                raise ServiceUnavailableError("managed service is unavailable; continue locally") from None
+            raise ServiceUsageExceededError(reset_at=reset_at, upgrade_url=upgrade_url)
+        if response.status in {500, 502, 503, 504}:
             raise ServiceUnavailableError("managed service is unavailable; continue locally")
         if response.status != 200:
             raise ServiceConnectorError("managed service rejected the request")
@@ -886,8 +923,7 @@ class ServiceConnector:
 
     def _result_matches_profile(self, checked_result: dict[str, Any]) -> bool:
         return (
-            checked_result["schemaVersion"]
-            in POLICY_BOUND_SERVICE_QUERY_RESULT_SCHEMA_VERSIONS
+            checked_result["schemaVersion"] in POLICY_BOUND_SERVICE_QUERY_RESULT_SCHEMA_VERSIONS
             and checked_result["policy"]["policyDigest"] == self.profile.accepted_policy_digest
             and checked_result["policy"]["executionMode"] == self.profile.execution_mode
             and checked_result["policy"]["historyMode"] == self.profile.history_mode
@@ -1016,9 +1052,7 @@ class ServiceConnector:
             authorization = delivery.get("authorization")
             if delivery.get("mode") == "public-edge":
                 authorization = None
-            elif delivery.get("mode") != "protected-capability" or not isinstance(
-                authorization, dict
-            ):
+            elif delivery.get("mode") != "protected-capability" or not isinstance(authorization, dict):
                 raise ServiceConnectorError("service artifact authorization is unavailable")
             return self._stream_checked_artifact(
                 checked_result=checked_result,
@@ -1524,9 +1558,7 @@ class ServiceConnector:
             and version in verified.discovery["resultVersions"]
         ]
         if not compatible_results:
-            raise ServiceConnectorError(
-                "service does not advertise a policy-bound result generation"
-            )
+            raise ServiceConnectorError("service does not advertise a policy-bound result generation")
         return build_service_query(
             request_id=request_id,
             objective=objective,

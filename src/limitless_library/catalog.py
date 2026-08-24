@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import re
 import stat
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,31 @@ from .schemas import SchemaError, validate
 
 class CatalogError(ValueError):
     """A catalog cannot produce a safe, bound decision."""
+
+
+_WORD = re.compile(r"[a-z0-9]+")
+_SEARCH_NOISE = frozenset(
+    {
+        "a",
+        "about",
+        "an",
+        "and",
+        "for",
+        "from",
+        "in",
+        "into",
+        "library",
+        "local",
+        "method",
+        "of",
+        "omarchy",
+        "plugin",
+        "the",
+        "to",
+        "user",
+        "with",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -119,6 +145,36 @@ def _public_offer(offer: dict[str, Any]) -> dict[str, Any]:
     return {key: copy.deepcopy(offer[key]) for key in ("id", "kind", "taskKind", "files", "method")}
 
 
+def _search_terms(value: str) -> set[str]:
+    return {term for term in _WORD.findall(value.lower()) if len(term) > 1 and term not in _SEARCH_NOISE}
+
+
+def _objective_score(capsule: dict[str, Any], offer: dict[str, Any], objective: str) -> int:
+    """Return a conservative lexical tie-break score for one eligible offer.
+
+    Eligibility, rights, compatibility, and explicit priority remain controlling.
+    Objective text is used only when otherwise-equal eligible offers would force
+    an abstention, and only a unique positive match can break that tie.
+    """
+
+    query = _search_terms(objective)
+    if not query:
+        return 0
+    title = _search_terms(str(capsule.get("title", "")))
+    method = offer.get("method")
+    if not isinstance(method, dict):
+        return 5 * len(query & title)
+    summary = _search_terms(str(method.get("summary", "")))
+    details: set[str] = set()
+    for field in ("steps", "verification"):
+        values = method.get(field)
+        if isinstance(values, list):
+            for value in values:
+                if isinstance(value, str):
+                    details.update(_search_terms(value))
+    return 5 * len(query & title) + 3 * len(query & summary) + len(query & details)
+
+
 class LocalCatalog:
     """An immutable-on-load catalog of independently redistributable capsules."""
 
@@ -174,10 +230,23 @@ class LocalCatalog:
                 if _matches(offer, request):
                     candidates.append((offer["priority"], capsule.record["id"], offer["id"], capsule, offer))
         candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
+        selected_candidate: tuple[int, str, str, _Capsule, dict[str, Any]] | None = None
+        if candidates:
+            top_priority = candidates[0][0]
+            top = [candidate for candidate in candidates if candidate[0] == top_priority]
+            if len(top) == 1:
+                selected_candidate = top[0]
+            elif isinstance(request.get("objective"), str):
+                ranked = sorted(
+                    ((_objective_score(item[3].record, item[4], request["objective"]), item) for item in top),
+                    key=lambda item: (-item[0], item[1][1], item[1][2]),
+                )
+                if ranked[0][0] > 0 and ranked[0][0] > ranked[1][0]:
+                    selected_candidate = ranked[0][1]
         selected: dict[str, Any] | None = None
-        if candidates and (len(candidates) == 1 or candidates[0][0] > candidates[1][0]):
-            capsule = candidates[0][3].record
-            offer = candidates[0][4]
+        if selected_candidate is not None:
+            capsule = selected_candidate[3].record
+            offer = selected_candidate[4]
             selected = {
                 "capsule": {
                     "id": capsule["id"],

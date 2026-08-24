@@ -6,8 +6,8 @@ by `tests/`:
 - strict JSON and safe relative paths;
 - schema-valid, reproducible capsule and recipe sealing;
 - deterministic exact, method, and non-disclosing abstention decisions;
-- abstention on equal-priority ambiguity, revocation, policy mismatch, and
-  incompatibility;
+- deterministic objective tie-breaking plus abstention on absent, unmatched,
+  or tied equal-priority objectives, revocation, policy mismatch, and incompatibility;
 - rejection of changed exact bytes, changed verifier bytes, stale or altered
   decisions, unsafe targets, and overwrite attempts;
 - exact installed byte equality and rollback after failed verification;

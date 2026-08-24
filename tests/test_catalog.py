@@ -82,6 +82,44 @@ def test_equal_priority_ambiguity_abstains_without_candidate_details(tmp_path: P
     assert decision["reason"] == "no-safe-selection"
 
 
+def test_objective_breaks_only_a_unique_equal_priority_lexical_tie(tmp_path: Path) -> None:
+    copied = tmp_path / "catalog"
+    shutil.copytree(CATALOG, copied)
+    manifest = copied / "hello-component" / "capsule.json"
+    capsule = json.loads(manifest.read_text())
+    capsule["offers"][1]["priority"] = 100
+    capsule["offers"][1]["compatibility"]["constraints"] = ["language:python", "runtime:any"]
+    capsule["offers"][1]["compatibility"]["toolchain"] = {"python": ["3.12"]}
+    capsule["capsuleDigest"] = sha256_json(without(capsule, "capsuleDigest"))
+    manifest.write_text(json.dumps(capsule))
+    request = load_json(REQUESTS / "exact-python.json")
+    request["objective"] = "Normalize a non-empty name and render a deterministic greeting."
+
+    decision = LocalCatalog(copied).query(request)
+
+    assert decision["decision"] == "instantiate"
+    assert decision["selected"]["offer"]["id"] == "offer:hello-portable-method"
+
+
+def test_objective_does_not_force_an_unmatched_equal_priority_choice(tmp_path: Path) -> None:
+    copied = tmp_path / "catalog"
+    shutil.copytree(CATALOG, copied)
+    manifest = copied / "hello-component" / "capsule.json"
+    capsule = json.loads(manifest.read_text())
+    capsule["offers"][1]["priority"] = 100
+    capsule["offers"][1]["compatibility"]["constraints"] = ["language:python", "runtime:any"]
+    capsule["offers"][1]["compatibility"]["toolchain"] = {"python": ["3.12"]}
+    capsule["capsuleDigest"] = sha256_json(without(capsule, "capsuleDigest"))
+    manifest.write_text(json.dumps(capsule))
+    request = load_json(REQUESTS / "exact-python.json")
+    request["objective"] = "Tune a database connection pool."
+
+    decision = LocalCatalog(copied).query(request)
+
+    assert decision["decision"] == "abstain"
+    assert decision["selected"] is None
+
+
 def test_revoked_and_unauthorized_offers_are_ineligible(tmp_path: Path) -> None:
     copied = tmp_path / "catalog"
     shutil.copytree(CATALOG, copied)

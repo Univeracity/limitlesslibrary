@@ -1440,8 +1440,10 @@ def validate_service_query_result(
                 if (
                     compatibility["runtime"] not in {"any", target["runtime"]}
                     or not version_range_covers(compatibility["versionRange"], target["versionRange"])
-                    or target["platform"] not in {*compatibility["platforms"], "any"}
-                    or target["architecture"] not in {*compatibility["architectures"], "any"}
+                    or "any" not in compatibility["platforms"]
+                    and target["platform"] not in compatibility["platforms"]
+                    or "any" not in compatibility["architectures"]
+                    and target["architecture"] not in compatibility["architectures"]
                     or not set(receiver["interfaces"]).issubset(set(compatibility["interfaces"]))
                 ):
                     raise PublicServiceContractError("service query result is incompatible with a receiver target")
