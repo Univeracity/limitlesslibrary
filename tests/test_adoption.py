@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import stat
 from pathlib import Path
 
 import pytest
@@ -41,6 +43,8 @@ def test_exact_adoption_installs_exact_bytes_and_records_verified_use(tmp_path: 
     )
     installed = receiver / "_vendor" / "greeting.py"
     assert sha256_file(installed) == decision["selected"]["offer"]["files"][0]["digest"]
+    if os.name == "posix":
+        assert stat.S_IMODE(installed.stat().st_mode) == 0o600
     assert receipt["disposition"] == {
         "technicalIntegrationVerified": True,
         "runtimeAdherenceVerified": True,

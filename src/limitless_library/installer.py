@@ -131,7 +131,10 @@ def _install_file(source: Path, destination: Path) -> None:
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     try:
-        descriptor = os.open(destination, flags, 0o644)
+        # Exact components may contain private receiver material. The bundle
+        # binds bytes, not a permission mode, so default new files to the
+        # narrowest useful owner-only permissions.
+        descriptor = os.open(destination, flags, 0o600)
     except OSError as error:
         raise AdoptionError(f"cannot create exact installation target: {destination}") from error
     try:
