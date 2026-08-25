@@ -86,9 +86,9 @@ fabricates a remote selection or silently weakens the accepted boundary.
 
 ## Exact artifact continuation
 
-A current exact-component result can authorize one bounded artifact without
-placing its capability in a URL. The ordinary CLI can consume that result in
-the same invocation:
+A current exact-component result can select one bounded artifact without
+placing authority in a URL. The ordinary CLI can consume that result in the
+same invocation:
 
 ```bash
 limitless service-query \
@@ -97,19 +97,19 @@ limitless service-query \
 ```
 
 The client revalidates the signed result against the exact query and current
-service keys, sends the one-use `Limitless-Capability` value and anonymous
-session bearer as headers, refuses redirects, query strings, compression, and
-responses larger than 128 KiB, and requires the octet-stream length and digest
-header to agree with the received bytes and signed selection. It then creates
-an owner-only file atomically and refuses to overwrite an existing path. The
-printed staging summary contains neither bearer nor delivery capability.
+service keys. Result `1.5` then selects one signed delivery lane: immutable
+public-edge objects need no credential, while protected objects use the
+anonymous session bearer and one-use `Limitless-Capability` header. Both lanes
+refuse redirects, query strings, and compression; stream at most 64 MiB; and
+require the response media type, length, and digest to agree with the signed
+selection. The client then creates an owner-only file atomically and refuses to
+overwrite an existing path. The printed staging summary contains neither a
+bearer nor delivery capability.
 
-The bounded client currently buffers the artifact before publishing it; the
-128 KiB ceiling makes that memory use explicit. Staging only preserves the
-verified handoff. A receiver or native provider must still interpret the
-signed `nextAction`, install under its own rules, verify locally, observe use,
-and decide whether to submit outcome evidence. A failed integrity check can
-consume the one-use capability but never publishes bytes to the destination.
+Staging only preserves the verified handoff. A receiver or native provider
+must still interpret the signed `nextAction`, install under its own rules,
+verify locally, observe use, and decide whether to submit outcome evidence. A
+failed integrity check never publishes bytes to the destination.
 
 A receiver adapter that must continue after the query process exits without
 retaining objective text may keep the already verified signed result and its
@@ -131,15 +131,15 @@ and apply receiver-owned review, validation, and no-overwrite rules. Existing
 service result 1.3 artifacts remain format-blind and therefore stop at opaque
 staging.
 
-The current `limitless.service-query-result/1.4` contract binds
-that format, its vendor media type, and a positive byte length into the signed
-artifact descriptor and is advertised by discovery and requested by default.
-The connector streams no more
-than 64 MiB into a mode-0600 temporary file, hashes and counts bounded chunks,
-requires the response headers and signed descriptor to agree, and publishes by
-no-replace hard link only after verification. Interrupted or mismatched streams
-leave no destination. Parsing and receiver-native installation remain separate
-explicit adapter responsibilities.
+The current `limitless.service-query-result/1.5` contract binds that format,
+its vendor media type, a positive byte length, and its public-edge or
+protected-capability delivery mode into the signed artifact descriptor. It is
+advertised by discovery and requested by default. The connector streams no
+more than 64 MiB into a mode-0600 temporary file, hashes and counts bounded
+chunks, requires the response headers and signed descriptor to agree, and
+publishes by no-replace hard link only after verification. Interrupted or
+mismatched streams leave no destination. Parsing and receiver-native
+installation remain separate explicit adapter responsibilities.
 
 ## Explicit anonymous publication
 

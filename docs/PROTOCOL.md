@@ -55,8 +55,8 @@ in `limitless_library.service_contracts`:
 
 - current query `limitless.service-query/1.1`, with validation-only `1.0`
   compatibility;
-- current result `limitless.service-query-result/1.4`; discovery advertises
-  `1.1`–`1.4`, while `1.0` remains validation-only for historical evidence;
+- current result `limitless.service-query-result/1.5`; discovery advertises
+  `1.1`–`1.5`, while `1.0` remains validation-only for historical evidence;
 - current discovery `limitless.service-discovery/1.2`, with `1.0` and `1.1`
   compatibility;
 - `limitless.service-root-key-transition/1.0` and its bounded set;
@@ -77,15 +77,17 @@ installation identity, and root-key rotation. These records are the public
 compatibility surface; private ranking, identity persistence, policy
 evaluation, service storage, and deployment records are not.
 
-Current result `1.4` exact-artifact selections carry a query-free HTTPS URI,
-one-use `Limitless-Capability` header value, exact positive byte length, and
-the closed `limitless.exact-file-bundle/1.0` format/media-type pair inside the
-signed selection. Artifact bytes do not cross MCP or the JSON query response.
-The continuation streams at most 64 MiB into an unpublished owner-only
-temporary file, verifies the signed/declared/received length and digest, and
-publishes without overwrite. Receiver installation remains separate. A client
-must not infer this descriptor for older results; historical `1.3` artifacts
-remain opaque and use their legacy bounded staging path.
+Current result `1.5` exact-artifact selections carry a query-free HTTPS URI,
+exact positive byte length, the closed `limitless.exact-file-bundle/1.0`
+format/media-type pair, and one explicit delivery lane inside the signed
+selection. Public-edge objects are immutable and credential-free; protected
+objects carry one-use `Limitless-Capability` header authority. Artifact bytes
+do not cross MCP or the JSON query response. The continuation streams at most
+64 MiB into an unpublished owner-only temporary file, verifies the
+signed/declared/received length and digest, and publishes without overwrite.
+Receiver installation remains separate. A client must not infer current
+descriptors for older results; historical generations remain bounded by their
+own signed contracts.
 
 Signed submission intent `1.2` establishes where that descriptor
 must originate. Its artifact content object binds the same closed bundle
@@ -97,8 +99,9 @@ protocol does not acquire interpretation authority. The packaged static corpus
 proves intent, plan, and release signatures plus declared format, media-type,
 size, and signature mutations across implementations.
 
-This generation is active across ordinary publication, admission, projection,
-delivery authorization, and result `1.4`. Before signing an artifact
+This format-aware generation is active across ordinary publication, admission,
+projection, and delivery. Result `1.5` additionally binds the public-edge or
+protected-capability delivery lane. Before signing an artifact
 publication, the client parses its bytes as a canonical exact file bundle and
 binds the known format and media type into the intent. Existing `1.0`/`1.1`
 releases remain format-blind and must never be upgraded by sniffing or private

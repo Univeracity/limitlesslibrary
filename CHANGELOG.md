@@ -28,7 +28,7 @@
 - Explicit exact-artifact continuation with header-only one-use authority,
   bounded digest verification, owner-only no-overwrite staging, and a
   nonsecret CLI result.
-- Coordinated format-aware activation: intent/release 1.2 and result 1.4 are
+- Coordinated format-aware activation: intent/release 1.2 and result 1.5 are
   current and advertised, exact bundles stream up to 64 MiB, and historical
   signed generations remain verifiable without being reclassified.
 - Public submission, policy-acceptance, admission, immutable-lineage, and

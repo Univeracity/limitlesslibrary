@@ -4,7 +4,10 @@
 
 <h1 align="center">Limitless Library</h1>
 
-<p align="center"><strong>Verified reuse infrastructure for agents.</strong></p>
+<p align="center">
+  <strong>AI agents default to building from scratch, wasting time and tokens.<br>
+  Limitless helps them find, verify, and reuse previous work.</strong>
+</p>
 
 <p align="center">
   <a href="LICENSE"><img alt="Apache-2.0 license" src="https://img.shields.io/badge/license-Apache--2.0-111111"></a>
@@ -20,24 +23,27 @@
   <a href="#mcp">MCP</a> ·
   <a href="#connect-an-agent">Connect an agent</a> ·
   <a href="#connect-to-limitless-library-service">Service</a> ·
+  <a href="#use-it-with-omarchy">Omarchy</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 ---
 
-## Reuse work without giving up trust
+## Stop rebuilding work that already exists
 
-AI agents repeatedly solve problems that another agent has already solved. That
-wastes time and compute. Search alone does not make an earlier result safe to
-reuse: its authorization, compatibility, integrity, and actual adoption still
-need proof.
+Without Limitless, an agent gets a task and starts from zero—even when another
+agent has already completed useful work. With Limitless, it checks first. One
+quick query can return a reusable component, a practical method, or an honest
+instruction to start fresh.
 
-Limitless Library lets agents check before starting from scratch. It returns one
-permissioned result that fits the receiving environment—an exact component or
-source-free method—or abstains without disclosing a candidate. The receiver
-decides what may enter, verifies it locally, and records evidence that adopted
-work was actually used.
+> **Without Limitless:** task → rebuild from scratch<br>
+> **With Limitless:** task → check first → reuse what fits or start fresh
+
+Finding prior work is only half the problem. Limitless also checks whether it
+is allowed, compatible, unchanged, and actually adopted. The receiving
+environment keeps control: it decides what may enter and verifies exact reuse
+locally.
 
 ![Verified reuse lifecycle: query before work; evaluate rights and fit; return an exact component, a source-free method, or a non-disclosing abstention; verify exact reuse locally; observe invocation; and return an adoption receipt.](docs/assets/verified-reuse-flow.svg)
 
@@ -52,6 +58,14 @@ work was actually used.
 | **Observed use** | Delivery is not counted as reuse until receiver code invokes the supplied component |
 | **Local by default** | The reference lifecycle needs no account, hosted service, or model API |
 | **Inspectable service trust** | The optional connector pins service authority, policy, protocol, and signed results |
+
+## Try it now
+
+| Starting point | Best for | What you get |
+| --- | --- | --- |
+| [Local quick start](#quick-start) | Inspecting the complete lifecycle | Exact adoption, method guidance, and abstention with no account or hosted service |
+| [Public service](#connect-to-limitless-library-service) | Searching and contributing to the shared Library | Anonymous activation, high-signal discovery, signed results, and reviewed public intake |
+| [Verified Omarchy plugin](https://omarchyplugins.com/plugin.html?id=univeracity.limitless-library) | Omarchy users who want a native interface | A panel, bar widget, local catalog, agent connection, and optional service access |
 
 ## Quick start
 
@@ -183,8 +197,12 @@ Python callers can use `query_local(...)` or `McpStdioConnector`. See
 
 ## Connect an agent
 
-Limitless Library supports Antigravity CLI (`agy`) outside Omarchy and other
-host integrations. Connect it to an explicit local catalog with one command:
+This repository currently includes a direct setup adapter for Antigravity CLI
+(`agy`). Other hosts can connect through the documented stdio MCP surface;
+Omarchy users get verified setup adapters for Codex, Claude Code, Grok, and
+Antigravity through the plugin described below.
+
+Connect Antigravity to an explicit local catalog with one command:
 
 ```bash
 limitless agent-connect antigravity --catalog /absolute/path/to/catalog
@@ -209,6 +227,24 @@ migrated or new installation uses Antigravity's current global profile. This
 local connection neither activates the managed service nor sends a query until
 the agent calls the tool.
 
+## Use it with Omarchy
+
+The [verified Limitless Library plugin](https://omarchyplugins.com/plugin.html?id=univeracity.limitless-library)
+is live in the Omarchy marketplace. Install it from Omarchy's plugin interface,
+or use the marketplace command:
+
+```bash
+omarchy plugin add https://github.com/Univeracity/limitless-omarchy.git --enable
+```
+
+The plugin provides a native panel and bar widget, installs its private local
+runtime from the UI, connects the owner's selected agent where supported, and
+keeps service discovery opt-in. It supports both Omarchy customization and
+general agent work, so users do not need a second Limitless package.
+
+See the [Omarchy product page](https://limitlesslibrary.com/omarchy) or inspect
+the [plugin source](https://github.com/Univeracity/limitless-omarchy).
+
 ## Connect to Limitless Library service
 
 Local use remains available without the service. The official client bundles
@@ -218,7 +254,8 @@ rotation chain, accepted policy, and discovery document, then stores that trust
 boundary locally. It also creates one service-specific signing key, verifies
 the service's installation attestation, and obtains a short-lived anonymous
 session. No account, downloaded profile, pasted token, or API key is required
-for baseline public access.
+for baseline public access. The examples below use an installed `limitless`
+command; from a source checkout, use `./scripts/limitless` instead.
 
 ```bash
 limitless service-activate
@@ -229,7 +266,6 @@ limitless service-query --request ./service-query.json
 limitless service-query \
   --request ./service-query.json \
   --artifact-output ./selected.bin
-
 ```
 
 The service accepts anonymous activation, queries, outcome evidence, and
@@ -250,18 +286,25 @@ without overwrite.
 Staging is not parsing, installation, or proof of adoption; those remain
 receiver-adapter responsibilities.
 
-Publication is explicit but account-free. `service-publish` accepts a small
-draft that names only the files the user chose, resolves their paths relative
-to the draft rather than the current directory, and prepares a signed,
-resumable local state file before network transfer. It accepts the exact
-advertised policy only with the command-line confirmation above, negotiates
-digests first, streams only missing bytes, retries the immutable submission,
-and returns its admission state. The same owner-only state supports later
-status inspection and explicit
-withdrawal without retaining credentials in the draft or command line. A
-quarantined or rejected contribution is reported honestly without being
-mistaken for a transport failure. It does
-not scan or upload a workspace. Artifact sources must already be canonical
+Publication is explicit but account-free. After inspecting the service and
+reviewing its advertised publication policy, publish the bundled source-free
+method example with the exact policy digest shown by `service-inspect`:
+
+```bash
+limitless service-publish \
+  --draft ./examples/publication/publication.draft.json \
+  --accept-publication-policy-digest 'sha256:<reviewed-policy-digest>'
+```
+
+`service-publish` accepts only the files named by the draft, resolves them
+relative to that draft rather than the current directory, and prepares a
+signed, resumable owner-only state file before transfer. It negotiates digests
+first, streams only missing bytes, and returns the admission state. That state
+supports later status inspection and explicit withdrawal without storing a
+credential in the draft or command line. A quarantined or rejected
+contribution is reported honestly rather than mistaken for a network failure.
+The client does not scan or upload a workspace. Artifact sources must already
+be canonical
 `limitless.exact-file-bundle/1.0` payloads; the client verifies that shape
 locally and binds it into the current signed publication intent. See the
 [managed-service connector](docs/MANAGED-SERVICE.md).
@@ -299,12 +342,18 @@ Outputs are immutable: both commands refuse to overwrite an existing path.
 
 ## Status and security
 
-This is a pre-alpha reference implementation. The complete reuse lifecycle is
-intentionally local, single-operator, and Linux-only for contained
-verification. The optional connector verifies a remote service's public wire
-authority, but this repository does not implement hosted identity, ranking,
-storage, or multi-tenant coordination. Technical integration is not treated as
-product adoption.
+This repository is an alpha package and the open-source foundation of a live
+preview. The complete local lifecycle works without an account or hosted
+service and remains single-operator. Contained exact verification currently
+requires Linux and Bubblewrap; querying and method selection do not.
+
+The official public service is usable now for anonymous activation, discovery,
+signed decisions and results, exact-artifact staging, outcome evidence, and
+reviewed public contribution. The private admission, ranking, managed-storage,
+and multi-tenant service implementation is intentionally outside this
+repository; its public wire contracts, connector, conformance fixtures, and
+trust checks are open here. Account-backed history and private group or
+organization coordination remain under development.
 
 There is deliberately no unsandboxed verifier fallback. Querying and method
 selection work without Bubblewrap; exact adoption fails closed if containment
@@ -327,5 +376,6 @@ Apache-2.0 licensed. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 <p align="center">
   A <a href="https://univeracity.com">Univeracity</a> project ·
-  <a href="https://limitlesslibrary.com">limitlesslibrary.com</a>
+  <a href="https://limitlesslibrary.com">limitlesslibrary.com</a> ·
+  <a href="https://omarchyplugins.com/plugin.html?id=univeracity.limitless-library">Omarchy plugin</a>
 </p>
