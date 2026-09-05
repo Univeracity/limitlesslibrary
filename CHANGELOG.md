@@ -38,6 +38,12 @@
   publisher-visible admission status.
 - Owner-only publication follow-up for admission inspection and idempotent
   signed withdrawal of an active release.
+- Role-separated local receiver profiles distinguish the agent host, work
+  environment, operating targets, and verification receivers; a bounded
+  projection sends only execution and compatibility facts to the service.
+- Composite receiver evidence can bind deterministic checks, receiver
+  observations, and human-witness checks without treating blocked or failed
+  physical verification as success.
 - Result 1.5 delivery lanes distinguish credential-free immutable public-edge
   objects from protected capability-bearing objects without query-string
   authority.

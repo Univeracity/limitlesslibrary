@@ -84,6 +84,44 @@ requested treatment. A timeout or availability response returns a distinct
 error so the caller can continue with local reuse or fresh work; it never
 fabricates a remote selection or silently weakens the accepted boundary.
 
+### Different host, work, target, and verifier environments
+
+Advanced clients can keep a local
+`limitless.receiver-environment-profile/1.0` record when the process host is
+not the place being changed or the environment where the result must work.
+`project_service_receiver_context(...)` deliberately projects only:
+
+- the agent host's platform, architecture, runtime, and exact version; and
+- each authorized target's platform, architecture, runtime, version range,
+  and declared interfaces.
+
+The work environment, device attributes, observation provenance, evidence
+digests, and verification receivers are not part of the service query. Multiple
+targets require either an explicit selected target or a declared all-targets
+mode with shared interfaces. Missing target facts fail locally instead of being
+borrowed from the host.
+
+After work, `limitless.receiver-evidence/1.0` can bind deterministic checks and
+receiver or human observations to the exact local profile and service decision.
+This richer receipt is local evidence in the current release; it does not alter
+the public service wire contract or upload physical-observation details.
+
+The cross-environment example at
+`examples/receiver/environment-profile.json` models a Linux-hosted agent
+building for a Windows receiver. Python integrations can load that profile and
+create the bounded existing service context with:
+
+```python
+from limitless_library import project_service_receiver_context
+from limitless_library.contracts import load_json
+
+context = project_service_receiver_context(
+    load_json("examples/receiver/environment-profile.json"),
+    receiver_id="receiver:windows-application",
+    allowed_use="develop-application",
+)
+```
+
 ## Exact artifact continuation
 
 A current exact-component result can select one bounded artifact without

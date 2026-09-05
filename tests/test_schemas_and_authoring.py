@@ -20,6 +20,8 @@ def test_all_bundled_schemas_are_valid_draft_2020_12() -> None:
         "capsule-0.1.schema.json",
         "decision-0.1.schema.json",
         "query-0.1.schema.json",
+        "receiver-environment-profile-1.0.schema.json",
+        "receiver-evidence-1.0.schema.json",
         "recipe-0.1.schema.json",
         "verifier-result-0.1.schema.json",
     ]

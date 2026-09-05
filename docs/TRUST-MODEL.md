@@ -40,6 +40,15 @@ workspace discovery or connection as publication consent.
 - Receiver verifiers are digest-bound and run with no network, no inherited
   secrets, a read-only receiver, bounded time/memory/files/output, and a
   minimal runtime mount.
+- Receiver-environment profiles do not infer that the agent host, working
+  directory, operating target, and verification receiver are the same place.
+  Each fact set names how, when, and by whose authority it was observed.
+- Service projection includes only agent-host execution and target
+  compatibility. Work-environment paths, target attributes, observation
+  provenance, and human-witness details stay local.
+- Composite receiver evidence preserves failed, blocked, and inapplicable
+  checks. A physical claim is verified only when every required deterministic
+  and observational check passes in a receiver capable of establishing it.
 - Exact installed files are rehashed after verification.
 - Evidence writes are atomic and refuse overwrite.
 
@@ -51,6 +60,12 @@ show what those checks establish; they do not prove the verifier is complete.
 An operator authorization flag is an explicit assertion, not an identity
 system. A technical adoption receipt does not mean a human owner accepted a
 production dependency or would pay for the service.
+
+A user-declared or remotely observed environment fact is not inherently true;
+its source and evidence digest make the claim inspectable. Human-witness
+evidence can establish a bounded observation such as audible output, but it is
+not a laboratory measurement and must not be silently generalized to another
+device or software generation.
 
 The local catalog has no publisher signature, revocation distribution,
 multi-tenant isolation, or supply-chain transparency log. The optional client

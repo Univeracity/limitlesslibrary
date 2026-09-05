@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://limitlesslibrary.com/schemas/receiver-evidence-1.0.schema.json",
+  "title": "Limitless receiver evidence 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "decisionRef", "receiverProfileDigest", "requiredCheckIds", "checks", "outcome", "recordedAt", "receiptDigest"],
+  "properties": {
+    "schemaVersion": {"const": "limitless.receiver-evidence/1.0"},
+    "id": {"type": "string", "pattern": "^receiver-evidence:[0-9a-f]{16}$"},
+    "decisionRef": {"type": "string", "pattern": "^(decision:[A-Za-z0-9][A-Za-z0-9._:-]{0,119}|(managed-query-decision|control-decision):[0-9a-f]{16})$"},
+    "receiverProfileDigest": {"$ref": "#/$defs/digest"},
+    "requiredCheckIds": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "environmentId", "status", "reasonCode", "observedAt", "evidenceDigest"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "kind": {"enum": ["deterministic", "receiver-observation", "human-witness"]},
+          "environmentId": {"$ref": "#/$defs/id"},
+          "status": {"enum": ["passed", "failed", "blocked", "not-applicable"]},
+          "reasonCode": {"$ref": "#/$defs/id"},
+          "observedAt": {"type": "string", "format": "date-time"},
+          "evidenceDigest": {"$ref": "#/$defs/digest"}
+        }
+      }
+    },
+    "outcome": {"enum": ["verified", "failed", "blocked"]},
+    "recordedAt": {"type": "string", "format": "date-time"},
+    "receiptDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,199}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

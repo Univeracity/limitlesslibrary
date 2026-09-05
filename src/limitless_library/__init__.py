@@ -32,6 +32,19 @@ from .official_service import (
     activated_service_profile,
     activation_details,
 )
+from .receiver_environment import (
+    RECEIVER_ENVIRONMENT_SCHEMA_VERSION,
+    ReceiverEnvironmentError,
+    project_service_receiver_context,
+    receiver_environment_digest,
+    validate_receiver_environment_profile,
+)
+from .receiver_evidence import (
+    RECEIVER_EVIDENCE_SCHEMA_VERSION,
+    ReceiverEvidenceError,
+    build_receiver_evidence,
+    validate_receiver_evidence,
+)
 from .service_connector import (
     ServiceConnector,
     ServiceConnectorError,
@@ -48,6 +61,8 @@ __all__ = [
     "AGENT_MCP_SERVER_NAME",
     "ANTIGRAVITY_AGENT",
     "EXACT_FILE_BUNDLE_SCHEMA_VERSION",
+    "RECEIVER_ENVIRONMENT_SCHEMA_VERSION",
+    "RECEIVER_EVIDENCE_SCHEMA_VERSION",
     "AdoptionError",
     "AgentIntegrationError",
     "CatalogError",
@@ -63,6 +78,8 @@ __all__ = [
     "OfficialServiceActivationError",
     "OfficialServiceNotConfiguredError",
     "OfficialServiceUnavailableError",
+    "ReceiverEnvironmentError",
+    "ReceiverEvidenceError",
     "ServiceConnector",
     "ServiceConnectorError",
     "ServiceHttpResponse",
@@ -78,11 +95,16 @@ __all__ = [
     "adopt_exact_component",
     "antigravity_connection_status",
     "build_exact_file_bundle",
+    "build_receiver_evidence",
     "connect_antigravity",
     "disconnect_antigravity",
     "parse_exact_file_bundle",
+    "project_service_receiver_context",
     "query_local",
+    "receiver_environment_digest",
     "seal_capsule",
     "seal_recipe",
+    "validate_receiver_environment_profile",
+    "validate_receiver_evidence",
     "validate_recipe",
 ]

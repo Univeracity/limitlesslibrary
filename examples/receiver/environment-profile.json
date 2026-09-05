@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "limitless.receiver-environment-profile/1.0",
+  "environments": [
+    {
+      "id": "environment:agent-host",
+      "kind": "compute",
+      "facts": {
+        "platform": "linux",
+        "architecture": "x86_64",
+        "runtime": "python",
+        "version": "3.13.7",
+        "versionRange": ">=3.11,<3.14",
+        "interfaces": ["mcp/v1"],
+        "attributes": []
+      },
+      "observation": {
+        "source": "host-detected",
+        "authority": "host:agent",
+        "observedAt": "2026-09-04T15:00:00Z",
+        "evidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "id": "environment:windows-target",
+      "kind": "compute",
+      "facts": {
+        "platform": "windows",
+        "architecture": "x86_64",
+        "runtime": "dotnet",
+        "version": "10.0.26100",
+        "versionRange": ">=10,<11",
+        "interfaces": ["dotnet.application/v1"],
+        "attributes": []
+      },
+      "observation": {
+        "source": "remote-observed",
+        "authority": "receiver:windows-target",
+        "observedAt": "2026-09-04T15:00:00Z",
+        "evidenceDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      }
+    }
+  ],
+  "bindings": {
+    "agentHost": "environment:agent-host",
+    "workEnvironment": "environment:agent-host",
+    "targetEnvironments": ["environment:windows-target"],
+    "verificationReceivers": ["environment:windows-target"]
+  }
+}

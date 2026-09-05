@@ -670,6 +670,12 @@ def _receiver_context(value: Any) -> dict[str, Any]:
     }
 
 
+def validate_service_receiver_context(value: Any) -> dict[str, Any]:
+    """Validate the bounded receiver facts allowed to cross the service boundary."""
+
+    return _receiver_context(value)
+
+
 def validate_service_query(value: Any, *, at: datetime | None = None) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise PublicServiceContractError("service query has an unsupported shape")

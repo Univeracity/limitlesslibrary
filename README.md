@@ -56,6 +56,7 @@ locally.
 | **Exact bytes** | Content-addressed installation refuses overwrite and rolls back on failure |
 | **Fail-closed verification** | No network, inherited secrets, or unsandboxed verifier fallback |
 | **Observed use** | Delivery is not counted as reuse until receiver code invokes the supplied component |
+| **Real receiver facts** | The agent host, work location, operating target, and place where success is observed can remain distinct |
 | **Local by default** | The reference lifecycle needs no account, hosted service, or model API |
 | **Inspectable service trust** | The optional connector pins service authority, policy, protocol, and signed results |
 
@@ -140,13 +141,23 @@ For exact reuse, the receiver—not the capsule—controls the trust boundary:
 6. Runtime evidence proves invocation and an append-only receipt binds the
    decision, component, verification, and disposition.
 
+The agent's current machine is not automatically the receiver. A local
+receiver-environment profile can separately bind the agent host, the place
+being changed, one or more operating targets, and the environments or people
+capable of observing success. This covers cases such as a Linux-hosted agent
+building for Windows or an agent repairing a remote physical device. Only the
+host execution and target compatibility facts needed for service matching are
+projected across the network; work locations, hardware attributes, fact
+provenance, and physical-observation details stay local.
+
 If exact bytes do not fit, only a source-free method may cross. If no safe
 candidate exists, Limitless abstains without disclosing one.
 
 ## What is open here
 
 - JSON Schemas for capsules, queries, decisions, receiver recipes, verifier
-  results, and adoption receipts.
+  results, adoption receipts, role-separated environments, and composite
+  receiver evidence.
 - A source-minimized local catalog with policy and compatibility checks.
 - Exact-byte, no-overwrite installation with rollback on failure.
 - Receiver-owned adherence and obligation verification under Bubblewrap.
