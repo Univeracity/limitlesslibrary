@@ -131,3 +131,44 @@ def test_revoked_and_unauthorized_offers_are_ineligible(tmp_path: Path) -> None:
     manifest.write_text(json.dumps(capsule))
     decision = LocalCatalog(copied).query(load_json(REQUESTS / "exact-python.json"))
     assert decision["decision"] == "abstain"
+
+
+@pytest.mark.parametrize("request_file", ["exact-python.json", "method-portable.json"])
+def test_explicit_unmatched_objective_abstains_for_a_sole_candidate(request_file: str) -> None:
+    catalog = LocalCatalog(CATALOG)
+    request = load_json(REQUESTS / request_file)
+    assert catalog.query(request)["selected"] is not None
+    request["objective"] = "Replace a Windows printer driver with a macOS kernel extension"
+    decision = catalog.query(request)
+    assert decision["decision"] == "abstain"
+    assert decision["selected"] is None
+    assert decision["reason"] == "no-safe-selection"
+
+
+def test_matching_objective_keeps_a_sole_candidate() -> None:
+    request = load_json(REQUESTS / "method-portable.json")
+    request["objective"] = "Normalize a name and render a deterministic greeting"
+    assert LocalCatalog(CATALOG).query(request)["decision"] == "instantiate"
+
+
+def test_objective_does_not_fall_through_to_lower_priority(tmp_path: Path) -> None:
+    copied = tmp_path / "catalog"
+    shutil.copytree(CATALOG, copied)
+    manifest = copied / "hello-component" / "capsule.json"
+    capsule = load_json(manifest)
+    lower = copy.deepcopy(capsule["offers"][0])
+    lower["id"] = "offer:lower-priority"
+    lower["priority"] -= 1
+    lower["kind"] = "method"
+    lower["files"] = None
+    lower["method"] = {
+        "summary": "Tune a database connection pool",
+        "steps": ["Measure database connection demand"],
+        "verification": ["Verify connection latency"],
+    }
+    capsule["offers"].append(lower)
+    capsule["capsuleDigest"] = sha256_json(without(capsule, "capsuleDigest"))
+    manifest.write_text(json.dumps(capsule))
+    request = load_json(REQUESTS / "exact-python.json")
+    request["objective"] = "Tune a database connection pool"
+    assert LocalCatalog(copied).query(request)["selected"] is None
