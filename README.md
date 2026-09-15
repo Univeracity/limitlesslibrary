@@ -127,6 +127,12 @@ scanner for secrets embedded in free text. See the
 [local demo evidence map](docs/LOCAL-DEMO.md) for the generated artifacts and
 manual inspection commands.
 
+The terminal shows `USEFUL LOCAL RESULT`: the sample authorization and token
+fields are redacted while its agent, action, and repository fields survive.
+The same run reports a verified exact component, source-free guidance, and an
+abstention. These are deterministic examples from the bundled local catalog.
+Live service queries use the current public catalog and may correctly abstain.
+
 ## How verified reuse works
 
 For exact reuse, the receiver—not the capsule—controls the trust boundary:
@@ -271,13 +277,28 @@ command; from a source checkout, use `./scripts/limitless` instead.
 ```bash
 limitless service-activate
 limitless service-inspect
-limitless service-query --request ./service-query.json
+limitless service-query \
+  --request-id request:example-001 \
+  --objective "Verify prior work with receiver-owned checks and observed adoption" \
+  --receiver ./examples/receiver-context.json
 
 # When the verified result selects an exact artifact:
 limitless service-query \
-  --request ./service-query.json \
+  --request-id request:example-002 \
+  --objective "Find an exact component compatible with this receiver" \
+  --receiver ./examples/receiver-context.json \
   --artifact-output ./selected.bin
 ```
+
+Inspect and adapt [the service receiver example](examples/receiver-context.json)
+to the actual target before querying. It declares an agent on Linux/x86_64;
+it is not automatic host detection. `execution` describes the agent host,
+`targets` describes where the work must fit, and `allowedUse` states its intended
+use. For multiple targets, choose `all-targets` with `selectedTarget: null`, or
+`one-target` with a declared target ID. The `{constraints, toolchain}` receiver
+inside `examples/requests/` belongs to local queries and cannot be passed as a
+service receiver. The client builds fresh timestamps and a query digest; advanced
+callers can still submit a complete current query with `--request PATH`.
 
 The service accepts anonymous activation, queries, outcome evidence, and
 public contributions. A contribution can contain an independently authored
@@ -317,7 +338,20 @@ contribution is reported honestly rather than mistaken for a network failure.
 The client does not scan or upload a workspace. Artifact sources must already
 be canonical
 `limitless.exact-file-bundle/1.0` payloads; the client verifies that shape
-locally and binds it into the current signed publication intent. See the
+locally and binds it into the current signed publication intent. Method files
+also require validated canonical JSON: sorted object keys, compact UTF-8 JSON,
+and at most one trailing newline. The bundled method already meets that rule.
+For a hand-formatted method, create a new canonical file locally:
+
+```bash
+limitless seal-method --draft ./my-method.json --output ./my-method.canonical.json
+```
+
+Name that new file in the publication draft's `objects` list. `seal-method`
+does not connect or publish, and refuses to overwrite a file. Publication
+rejects malformed or noncanonical methods before signing new state or uploading;
+it never rewrites bytes already named by a resumable operation. Auxiliary
+manifest and verification files retain their own byte contracts. See the
 [managed-service connector](docs/MANAGED-SERVICE.md).
 
 ## Authoring

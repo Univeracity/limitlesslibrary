@@ -55,21 +55,27 @@ limitless service-status
 limitless service-inspect
 ```
 
-An agent or integration can submit a complete bounded service-query record:
-
-```bash
-limitless service-query --request ./service-query.json
-```
-
-Or let the client bind the query envelope around an explicit objective and
-receiver context:
+Let the client bind a fresh query envelope around an explicit objective and
+the bundled receiver context, after adapting its facts to your actual receiver:
 
 ```bash
 limitless service-query \
   --request-id request:example-001 \
-  --objective "Add a reviewed clipboard history extension" \
-  --receiver ./receiver-context.json
+  --objective "Verify prior work with receiver-owned checks and observed adoption" \
+  --receiver ./examples/receiver-context.json
 ```
+
+The example describes an agent on Linux/x86_64. It declares `receiverId`,
+`allowedUse`, `interfaces`, `execution`, `targets`, `compatibilityMode`, and
+`selectedTarget`. It differs from the local query receiver's `constraints` and
+`toolchain`. Execution facts describe the host; target facts describe where the
+result must work. Keep those facts distinct when they differ. A malformed
+receiver fails locally with exit status 2 and an actionable message.
+
+The client fills the current timestamps, policy vocabulary, supported result
+version, and query digest. Advanced callers with an already-built current query
+can use `limitless service-query --request PATH`; no static, expiring query file
+is needed for the walkthrough. Live catalog results may include abstention.
 
 Baseline public access requires no user credential: the client automatically
 uses its pseudonymous installation session. A caller may still supply an
@@ -130,7 +136,9 @@ same invocation:
 
 ```bash
 limitless service-query \
-  --request ./service-query.json \
+  --request-id request:example-artifact-001 \
+  --objective "Find an exact component compatible with this receiver" \
+  --receiver ./examples/receiver-context.json \
   --artifact-output ./selected.bin
 ```
 
@@ -205,6 +213,20 @@ and the current anonymous publisher authority into a signed intent, and creates
 an immutable mode-0600 state file beside the draft. A retry reuses that intent
 and request identity, so an interrupted transfer cannot silently become another
 release.
+
+Method objects are strict JSON with `summary`, ordered `steps`, `constraints`,
+`evaluation`, and `limitations`. The client validates structure and canonical
+bytes before it signs a new intent or uploads. Object keys must be sorted,
+whitespace must be compact, and one final newline is allowed. Constraints and
+limitations may be empty; evaluation must contain at least one check. Nonempty
+text lists must be sorted and unique. Duplicate JSON keys are rejected.
+
+For a readable draft, run
+`limitless seal-method --draft ./my-method.json --output ./my-method.canonical.json`
+and name the new file in the publication draft. Sealing is local, creates an
+owner-only file, and refuses overwrite. Automatic method admission is bounded
+to 64 KiB. Auxiliary manifest and verification objects retain their own byte
+contracts. Existing signed state always binds its original bytes.
 
 The client sends the signed policy acceptance and intent as bounded JSON,
 receives a signed plan and short-lived content authorization, and streams only

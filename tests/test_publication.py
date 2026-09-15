@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from limitless_library.contracts import canonical_json_bytes, sha256_json, strict_json_loads
+from limitless_library.contracts import canonical_json_bytes, load_json, sha256_json, strict_json_loads
 from limitless_library.exact_file_bundle import build_exact_file_bundle
 from limitless_library.public_submission_contracts import (
     build_content_transfer_grant,
@@ -15,9 +15,11 @@ from limitless_library.public_submission_contracts import (
 )
 from limitless_library.publication import (
     PublicationError,
+    _source_descriptor,
     publication_status,
     publish_draft,
     revoke_publication,
+    seal_publication_method,
 )
 from limitless_library.service_connector import (
     ServiceConnector,
@@ -243,7 +245,8 @@ def _fixture() -> tuple[
 
 
 def _write_draft(tmp_path: Path) -> Path:
-    (tmp_path / "method.md").write_text("Verify locally, then adopt.\n", encoding="utf-8")
+    method = Path(__file__).resolve().parents[1] / "examples" / "publication" / "method.json"
+    (tmp_path / "method.json").write_bytes(method.read_bytes())
     draft = {
         "schemaVersion": "limitless.publication-draft/1.0",
         "candidate": {
@@ -259,7 +262,7 @@ def _write_draft(tmp_path: Path) -> Path:
             "parents": [],
             "supersedes": None,
         },
-        "objects": [{"role": "method", "path": "method.md"}],
+        "objects": [{"role": "method", "path": "method.json"}],
         "compatibility": {
             "supportedTargets": [
                 {
@@ -289,6 +292,75 @@ def _write_draft(tmp_path: Path) -> Path:
     path = tmp_path / "publication.json"
     path.write_bytes(canonical_json_bytes(draft) + b"\n")
     return path
+
+
+@pytest.mark.parametrize("content", [b"{}", b'{"summary":"a","summary":"b"}', b"not json",
+                                     b'{ "summary": "pretty JSON" }'])
+def test_invalid_method_never_creates_signed_state_or_uploads(tmp_path: Path, content: bytes) -> None:
+    connector, transport, signer, publisher = _fixture()
+    draft = _write_draft(tmp_path)
+    (tmp_path / "method.json").write_bytes(content)
+    with pytest.raises(PublicationError, match="publication method"):
+        publish_draft(connector, draft_path=draft, state_path=None, signer=signer, publisher=publisher,
+                      accepted_publication_policy_digest=transport.policy["digest"], now=NOW)
+    assert not draft.with_name(draft.name + ".state.json").exists()
+    assert transport.intent is None
+    assert transport.upload_calls == 0
+    assert transport.authorization_calls == 0
+
+
+def test_pretty_method_requires_explicit_sealing_without_rewriting_source(tmp_path: Path) -> None:
+    import json
+
+    draft = _write_draft(tmp_path)
+    source = tmp_path / "method.json"
+    method = load_json(source)
+    original = json.dumps(method, indent=2).encode()
+    source.write_bytes(original)
+    with pytest.raises(PublicationError, match="seal-method"):
+        _source_descriptor("method", source.name, base=draft.parent)
+    sealed = tmp_path / "method.canonical.json"
+    result = seal_publication_method(source, sealed)
+    assert source.read_bytes() == original
+    assert sealed.read_bytes() == canonical_json_bytes(method) + b"\n"
+    assert sealed.stat().st_mode & 0o777 == 0o600
+    descriptor = _source_descriptor("method", sealed.name, base=tmp_path)
+    assert descriptor["digest"] == result["digest"]
+    with pytest.raises(PublicationError, match="cannot seal"):
+        seal_publication_method(source, sealed)
+    assert sealed.read_bytes() == canonical_json_bytes(method) + b"\n"
+
+
+@pytest.mark.parametrize("newline", [b"", b"\n"])
+def test_method_preflight_preserves_accepted_exact_bytes(tmp_path: Path, newline: bytes) -> None:
+    _write_draft(tmp_path)
+    source = tmp_path / "method.json"
+    method = load_json(source)
+    method["constraints"] = []
+    method["limitations"] = []
+    payload = canonical_json_bytes(method) + newline
+    source.write_bytes(payload)
+    descriptor = _source_descriptor("method", source.name, base=tmp_path)
+    assert descriptor["digest"] == "sha256:" + sha256(payload).hexdigest()
+    assert source.read_bytes() == payload
+
+
+@pytest.mark.parametrize("change", [{"evaluation": []}, {"steps": [{"index": True, "instruction": "Check",
+                                           "check": "fact-present", "expected": "Pass"}]}])
+def test_method_preflight_matches_service_structural_rejections(tmp_path: Path, change: dict) -> None:
+    _write_draft(tmp_path)
+    source = tmp_path / "method.json"
+    source.write_bytes(canonical_json_bytes({**load_json(source), **change}))
+    with pytest.raises(PublicationError, match="invalid publication method"):
+        _source_descriptor("method", source.name, base=tmp_path)
+
+
+def test_auxiliary_objects_keep_their_own_byte_contract(tmp_path: Path) -> None:
+    source = tmp_path / "evidence.txt"
+    payload = b"Receiver verification notes.\n"
+    source.write_bytes(payload)
+    for role in ("manifest", "verification"):
+        assert _source_descriptor(role, source.name, base=tmp_path)["digest"] == "sha256:" + sha256(payload).hexdigest()
 
 
 def test_one_command_publication_is_resumable_and_cwd_independent(tmp_path: Path) -> None:

@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from limitless_library import cli
+from limitless_library.contracts import load_json
+from limitless_library.service_contracts import build_service_query, validate_service_query
 
 
 class _Profile:
@@ -244,6 +246,60 @@ def test_service_query_accepts_an_exact_request_and_writes_no_implicit_state(
     cli.main()
 
     assert json.loads(capsys.readouterr().out) == {"verifiedRequest": {"query": "bounded"}}
+
+
+def test_service_receiver_error_is_clean_before_connector_activation(monkeypatch, capsys, tmp_path) -> None:
+    receiver = tmp_path / "receiver.json"
+    receiver.write_text('{"constraints": [], "toolchain": {}}', encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["limitless", "service-query", "--request-id", "request:test",
+                                     "--objective", "Verify prior work", "--receiver", str(receiver)])
+    monkeypatch.setattr(cli, "_service_connector", lambda _path: pytest.fail("invalid receiver reached activation"))
+    with pytest.raises(SystemExit) as error:
+        cli.main()
+    assert error.value.code == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "receiverContext" in output.err
+    assert "examples/receiver-context.json" in output.err
+    assert "Traceback" not in output.err
+
+
+def test_documented_service_receiver_builds_a_valid_query(monkeypatch, capsys) -> None:
+    from datetime import UTC, datetime
+
+    receiver = Path(__file__).resolve().parents[1] / "examples" / "receiver-context.json"
+
+    class ExampleConnector(_Connector):
+        def build_query(self, **arguments):
+            return build_service_query(**arguments, requested_audiences=["public"],
+                                       requested_treatments=["source-free-method"], execution_mode="service",
+                                       history_mode="local-only", client_name="example", client_version="1.0.0",
+                                       issued_at=datetime.now(UTC))
+
+    monkeypatch.setattr(sys, "argv", ["limitless", "service-query", "--request-id", "request:example-001",
+                                     "--objective", "Verify prior work", "--receiver", str(receiver)])
+    monkeypatch.setattr(cli, "_service_connector", lambda _path: ExampleConnector())
+    cli.main()
+    query = validate_service_query(json.loads(capsys.readouterr().out)["verifiedRequest"])
+    assert query["receiverContext"] == load_json(receiver)
+
+
+def test_seal_method_is_local_and_refuses_overwrite(monkeypatch, capsys, tmp_path) -> None:
+    method = Path(__file__).resolve().parents[1] / "examples" / "publication" / "method.json"
+    source = tmp_path / "method.json"
+    original = json.dumps(load_json(method), indent=2)
+    source.write_text(original, encoding="utf-8")
+    output = tmp_path / "sealed.json"
+    monkeypatch.setattr(sys, "argv", ["limitless", "seal-method", "--draft", str(source), "--output", str(output)])
+    monkeypatch.setattr(cli, "activated_service_connector", lambda: pytest.fail("sealing must remain local"))
+    cli.main()
+    assert json.loads(capsys.readouterr().out)["status"] == "sealed"
+    assert load_json(output) == load_json(source)
+    assert source.read_text(encoding="utf-8") == original
+    with pytest.raises(SystemExit) as error:
+        cli.main()
+    assert error.value.code == 2
+    assert "cannot seal" in capsys.readouterr().err
 
 
 def test_agent_connect_uses_the_general_antigravity_adapter(

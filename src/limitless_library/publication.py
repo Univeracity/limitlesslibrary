@@ -13,9 +13,11 @@ from typing import Any
 
 from .contracts import (
     ContractError,
+    canonical_json_bytes,
     load_json,
     sha256_json,
     strict_json_loads,
+    write_new_bytes,
     write_new_json,
 )
 from .exact_file_bundle import (
@@ -36,12 +38,14 @@ from .public_submission_contracts import (
     validate_submission_intent,
 )
 from .service_connector import ServiceConnector, ServiceConnectorError
+from .service_contracts import validate_source_free_method
 from .service_identity import InstallationSigner
 
 PUBLICATION_DRAFT_SCHEMA_VERSION = "limitless.publication-draft/1.0"
 PUBLICATION_STATE_SCHEMA_VERSION = "limitless.publication-state/1.0"
 MAX_PUBLICATION_DRAFT_BYTES = 64 * 1024
 MAX_PUBLICATION_STATE_BYTES = 128 * 1024
+MAX_PUBLICATION_METHOD_BYTES = 64 * 1024
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _POLICY_REVISION = re.compile(r"^[A-Za-z][A-Za-z0-9._:-]{0,119}$")
 _EXACT_FILE_BUNDLE_MEDIA_TYPE = "application/vnd.limitless.exact-file-bundle+json"
@@ -49,6 +53,38 @@ _EXACT_FILE_BUNDLE_MEDIA_TYPE = "application/vnd.limitless.exact-file-bundle+jso
 
 class PublicationError(ServiceConnectorError):
     """A local publication draft or resumable operation is unsafe."""
+
+
+def _method_payload(payload: bytes, *, require_canonical: bool = True) -> dict[str, Any]:
+    if not 1 <= len(payload) <= MAX_PUBLICATION_METHOD_BYTES:
+        raise PublicationError("publication method must be at most 64 KiB for automatic admission")
+    try:
+        value = strict_json_loads(payload.decode("utf-8"))
+        method = validate_source_free_method(value)
+        canonical = canonical_json_bytes(method)
+    except ValueError as error:
+        raise PublicationError(f"invalid publication method: {error}") from error
+    if require_canonical and payload not in (canonical, canonical + b"\n"):
+        raise PublicationError(
+            "publication method must be canonical JSON; run limitless seal-method --draft INPUT --output NEW_FILE "
+            "and name NEW_FILE in the publication draft"
+        )
+    return method
+
+
+def seal_publication_method(draft_path: Path, output_path: Path) -> dict[str, Any]:
+    """Write a validated, canonical method to a new owner-only file locally."""
+
+    try:
+        with Path(draft_path).open("rb") as source:
+            method = _method_payload(source.read(MAX_PUBLICATION_METHOD_BYTES + 1), require_canonical=False)
+        payload = canonical_json_bytes(method) + b"\n"
+        # The newline counts toward the service's byte limit too.
+        _method_payload(payload)
+        write_new_bytes(output_path, payload)
+    except (ContractError, OSError) as error:
+        raise PublicationError(f"cannot seal publication method: {error}") from error
+    return {"status": "sealed", "path": str(output_path), "digest": "sha256:" + sha256(payload).hexdigest(), "byteLength": len(payload)}
 
 
 def default_publication_state_path(draft_path: Path) -> Path:
@@ -118,23 +154,26 @@ def _source_descriptor(role: str, configured: str, *, base: Path) -> dict[str, A
             ):
                 raise PublicationError("publication source changed or is invalid")
             hasher = sha256()
-            artifact_payload = bytearray()
+            content_payload = bytearray()
             while True:
                 chunk = os.read(descriptor, 128 * 1024)
                 if not chunk:
                     break
                 hasher.update(chunk)
-                if role == "artifact":
-                    artifact_payload.extend(chunk)
-                    if len(artifact_payload) > MAX_EXACT_FILE_BUNDLE_BYTES:
-                        raise PublicationError("publication artifact exceeds the exact bundle limit")
+                if role in {"artifact", "method"}:
+                    content_payload.extend(chunk)
+                    maximum = MAX_EXACT_FILE_BUNDLE_BYTES if role == "artifact" else MAX_PUBLICATION_METHOD_BYTES
+                    if len(content_payload) > maximum:
+                        raise PublicationError(f"publication {role} exceeds its automatic admission byte limit")
             if role == "artifact":
                 try:
-                    parse_exact_file_bundle(bytes(artifact_payload))
+                    parse_exact_file_bundle(bytes(content_payload))
                 except ExactFileBundleError as error:
                     raise PublicationError(
                         "publication artifact is not a canonical exact file bundle"
                     ) from error
+            elif role == "method":
+                _method_payload(bytes(content_payload))
         finally:
             os.close(descriptor)
     except PublicationError:

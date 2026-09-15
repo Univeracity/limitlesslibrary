@@ -15,5 +15,13 @@ trust model are easiest to review.
 6. Never commit real receiver repositories, credentials, private catalog data,
    internal experiment evidence, or generated adoption receipts.
 
+For source-free method authoring, begin with `examples/publication/method.json`.
+Readable drafts can be converted locally with
+`limitless seal-method --draft INPUT --output NEW_FILE`. The command validates
+the method and writes canonical UTF-8 JSON without overwriting or publishing.
+Point the publication draft at the sealed file. Method object bytes, rather than
+only their parsed JSON meaning, are bound by the signed publication intent;
+changing them after preparation requires a new publication operation.
+
 Contributions are accepted under Apache-2.0. By submitting a contribution, you
 represent that you have the right to license it under those terms.

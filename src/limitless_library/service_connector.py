@@ -81,6 +81,7 @@ from .service_contracts import (
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5,
     SERVICE_QUERY_RESULT_SCHEMA_VERSIONS,
     SERVICE_QUERY_SCHEMA_VERSION,
+    PublicServiceContractError,
     active_result_keys,
     build_service_query,
     service_query_audiences,
@@ -90,6 +91,7 @@ from .service_contracts import (
     validate_service_profile,
     validate_service_query,
     validate_service_query_result,
+    validate_service_receiver_context,
     validate_service_root_key_transition_set,
 )
 
@@ -1560,6 +1562,12 @@ class ServiceConnector:
         issued_at: datetime | None = None,
         ttl_seconds: int = 60,
     ) -> dict[str, Any]:
+        try:
+            receiver_context = validate_service_receiver_context(receiver_context)
+        except PublicServiceContractError as error:
+            raise ServiceConnectorError(
+                f"{error}; use a service receiver context (see examples/receiver-context.json)"
+            ) from error
         verified = self.inspect()
         compatible_results = [
             version
@@ -1569,17 +1577,20 @@ class ServiceConnector:
         ]
         if not compatible_results:
             raise ServiceConnectorError("service does not advertise a policy-bound result generation")
-        return build_service_query(
-            request_id=request_id,
-            objective=objective,
-            receiver_context=receiver_context,
-            requested_audiences=self.profile.requested_audiences,
-            requested_treatments=requested_treatments,
-            execution_mode=self.profile.execution_mode,
-            history_mode=self.profile.history_mode,
-            client_name="limitless-library-python",
-            client_version="0.1.0a0",
-            issued_at=issued_at or self._now(),
-            ttl_seconds=ttl_seconds,
-            supported_result_version=compatible_results[-1],
-        )
+        try:
+            return build_service_query(
+                request_id=request_id,
+                objective=objective,
+                receiver_context=receiver_context,
+                requested_audiences=self.profile.requested_audiences,
+                requested_treatments=requested_treatments,
+                execution_mode=self.profile.execution_mode,
+                history_mode=self.profile.history_mode,
+                client_name="limitless-library-python",
+                client_version="0.1.0a0",
+                issued_at=issued_at or self._now(),
+                ttl_seconds=ttl_seconds,
+                supported_result_version=compatible_results[-1],
+            )
+        except PublicServiceContractError as error:
+            raise ServiceConnectorError(f"invalid service query: {error}") from error
