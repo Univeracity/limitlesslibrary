@@ -9,3 +9,9 @@ __pycache__/
 build/
 dist/
 .limitless/
+my-submissions/
+BUGGER.json
+BUGGER.md
+BUGGER.lock
+BUGGER.json.bak
+.bugger.toml

@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Self
 
+from . import __version__
 from .catalog import LocalCatalog
 from .contracts import sha256_json, strict_json_loads, without
 from .mcp_protocol import modern_metadata
@@ -109,7 +110,7 @@ class McpStdioConnector:
             raise ConnectorError("MCP connector is not open")
         request_id = self._next_id
         self._next_id += 1
-        params = {**params, "_meta": modern_metadata(client_name="limitless-library-python", client_version="0.1.0a0")}
+        params = {**params, "_meta": modern_metadata(client_name="limitless-library-python", client_version=__version__)}
         message = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
         encoded = json.dumps(message, separators=(",", ":"), sort_keys=True).encode() + b"\n"
         if len(encoded) > 1024 * 1024:

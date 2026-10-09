@@ -35,6 +35,7 @@ from urllib.request import (
     build_opener,
 )
 
+from . import __version__
 from ._service_support import decode_root_keys
 from .contracts import (
     ContractError,
@@ -659,7 +660,7 @@ class ServiceConnector:
     ) -> dict[str, str]:
         headers = {
             "accept": "application/json",
-            "user-agent": "limitless-library/0.1.0a0",
+            "user-agent": f"limitless-library/{__version__}",
         }
         if content:
             headers["content-type"] = "application/json"
@@ -968,7 +969,7 @@ class ServiceConnector:
                 descriptor = -1
                 headers = {
                     "accept": immutable["mediaType"],
-                    "user-agent": "limitless-library/0.1.0a0",
+                    "user-agent": f"limitless-library/{__version__}",
                 }
                 if authorization is not None:
                     headers.update(
@@ -1090,7 +1091,7 @@ class ServiceConnector:
             headers={
                 "accept": _ARTIFACT_CONTENT_TYPE,
                 "authorization": f"Bearer {self.profile.access_token}",
-                "user-agent": "limitless-library/0.1.0a0",
+                "user-agent": f"limitless-library/{__version__}",
                 authorization["header"]: authorization["value"],
             },
             body=None,
@@ -1430,7 +1431,7 @@ class ServiceConnector:
                     "content-type": _ARTIFACT_CONTENT_TYPE,
                     "content-length": str(current.st_size),
                     "x-limitless-content-digest": digest,
-                    "user-agent": "limitless-library/0.1.0a0",
+                    "user-agent": f"limitless-library/{__version__}",
                 },
                 source=opened,
                 byte_length=current.st_size,
@@ -1587,7 +1588,7 @@ class ServiceConnector:
                 execution_mode=self.profile.execution_mode,
                 history_mode=self.profile.history_mode,
                 client_name="limitless-library-python",
-                client_version="0.1.0a0",
+                client_version=__version__,
                 issued_at=issued_at or self._now(),
                 ttl_seconds=ttl_seconds,
                 supported_result_version=compatible_results[-1],

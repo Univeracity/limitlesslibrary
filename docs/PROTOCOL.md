@@ -45,11 +45,23 @@ implements `server/discover`, `tools/list`, and `tools/call` independently.
 
 The `2025-06-18` and legacy `2025-03-26` modes require a successful
 `initialize` followed by `notifications/initialized` before tool requests, and
-the server echoes the admitted revision. Client or server identity metadata is
+the server echoes a supported requested revision. For another nonempty version
+string it offers `2025-06-18`, which the client must support to continue.
+Malformed version values are rejected. Client or server identity metadata is
 diagnostic and never an authorization input.
 
-The MCP tool returns the decision as `structuredContent` and as canonical JSON
-text for clients that consume text content. Artifact bytes never cross MCP.
+`limitless_query_before_work` returns the decision as `structuredContent` and
+canonical JSON text for clients that consume text content. Artifact bytes never
+cross MCP. `limitless_register_method` accepts one original, checked, source-free
+method after useful work. It records title, task kind, observed outcome, target
+platform, and the canonical method fields (`summary`, ordered `steps` with
+`instruction`/`check`/`expected`, `constraints`, `evaluation`, `limitations`).
+It returns a stable method reference and local/public submission status. The
+default is owner-private local capture. Public submission requires both MCP
+startup flags for standing authorization and the exact reviewed policy digest;
+registration queues the background publisher, while service admission remains
+independent. `verifiedTargets` stays empty until separate receiver evidence
+exists. Method capture does not install artifact bytes.
 
 ## Managed-service façade
 

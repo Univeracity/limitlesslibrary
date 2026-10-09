@@ -202,12 +202,30 @@ Start the bounded local stdio server:
 limitless-mcp --catalog examples/catalog
 ```
 
-It exposes `limitless_query_before_work` and supports stateless MCP
+It exposes `limitless_query_before_work` and `limitless_register_method` and supports stateless MCP
 `2026-07-28` requests plus the `2025-06-18` and legacy `2025-03-26`
 initialization flows. Initialization-era clients complete `initialize` and
-`notifications/initialized` before requesting a tool. MCP is a decision
-channel, not an artifact transport; installation remains an explicit
-receiver-local operation.
+`notifications/initialized` before requesting a tool. Agents query before
+material work. After checking a useful original result, they can register a
+concise source-free method with steps, checks, applicability, and limits. The
+method object follows the
+[canonical method example](examples/publication/method.json). The default stores
+it privately under `$XDG_DATA_HOME/limitless-library/methods`
+(or `~/.local/share/limitless-library/methods`). Repeating the same registration
+returns the same method reference. A registration does not assert that the
+service has verified the method or accepted it into its catalog. Query results
+remain a decision channel, not an artifact transport; installation remains an
+explicit receiver-local operation.
+
+An owner who wants new methods submitted to the public service can activate
+the service, inspect and review its publication policy, then configure the MCP
+command with **both** `--submit-methods-publicly` and
+`--public-method-policy-digest sha256:<reviewed digest>`. This is standing
+authorization to publish independently authored CC0 methods. The tool queues
+submission in a separate process so normal task completion does not wait for
+network or admission; the service still decides whether to admit each method.
+Local-only is the default. The [managed-service guide](docs/MANAGED-SERVICE.md)
+explains status, retries, and revocation.
 
 Python callers can use `query_local(...)` or `McpStdioConnector`. See
 [Protocol](docs/PROTOCOL.md).
@@ -228,8 +246,8 @@ limitless agent-connect antigravity --catalog /absolute/path/to/catalog
 The command adds one named `limitless-library` stdio server to Antigravity's
 documented MCP profile. It uses the exact Python environment that ran
 `limitless`, so there is no separate executable to find or PATH assumption to
-maintain. Restart Antigravity CLI, then its MCP instructions and the
-`limitless_query_before_work` tool are available before material work.
+maintain. Restart Antigravity CLI, then its MCP instructions and the query and
+method registration tools are available.
 
 ```bash
 limitless agent-status antigravity

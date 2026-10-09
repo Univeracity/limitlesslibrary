@@ -271,6 +271,35 @@ An already revoked release returns its existing state without creating another
 withdrawal request. Pending, quarantined, rejected, or retired work cannot be
 misrepresented as an active release eligible for withdrawal.
 
+### MCP method contribution
+
+The generic Library MCP also offers `limitless_register_method` after an agent
+has checked useful original work. By default it records a canonical,
+source-free method in an owner-private local store and makes no service
+request. The registered method must describe the observed outcome and its
+applicability; this note is self-reported evidence, not verified receiver
+adoption. The server exposes no exact-source contribution tool.
+
+For standing public-method authorization, activate the service, inspect its
+signed `publicationPolicy`, review its policy URL, and configure the MCP server
+with both `--submit-methods-publicly` and
+`--public-method-policy-digest sha256:<reviewed digest>`. A registration then
+queues the existing signed `service-publish` lifecycle in a background process.
+The agent receives a stable `method:<sha256>` reference immediately. Public
+admission can remain pending, be rejected, or require owner attention; the tool
+does not report those as verified success.
+
+The default store is `$XDG_DATA_HOME/limitless-library/methods`, falling back to
+`~/.local/share/limitless-library/methods`. Each method folder is named by the
+64 hex characters after `method:`. It contains `capture.json`, `method.json`,
+and, when public sharing was authorized, `publication.json` plus
+`submission-status.json`. The signed `publication.json.state.json` appears
+after the first successful service preflight. The owner can use that state file
+with `service-publication-status` or `service-publication-revoke` as above.
+Changing the advertised policy requires a new owner review and MCP policy
+digest. Retry pending or failed submissions without another agent turn using
+`python -m limitless_library.method_capture --sync <method-store> --policy-digest sha256:<reviewed digest>`.
+
 ## Advanced alternate profiles
 
 Operators building another compatible service can bypass the official
@@ -298,9 +327,10 @@ implementations.
 
 ## Deliberate exclusions
 
-Connecting does not publish work. Only `service-publish` transfers the exact
-objects named in its reviewed draft; it does not enumerate a workspace or
-upload a local catalog. The client also does not install a staged component,
+Connecting alone does not publish work. `service-publish` transfers the exact
+objects named in its reviewed draft; owner-authorized MCP method contribution
+uses that same bounded lifecycle. Neither path enumerates a workspace or
+uploads a local catalog. The client also does not install a staged component,
 hand off to a native provider, or submit local outcome evidence. Those remain
 separate owner-authorized continuations. The service-side identity authority,
 managed admission implementation, ranking, persistence, analytics, and

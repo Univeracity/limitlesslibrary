@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from limitless_library import __version__
 from limitless_library.contracts import (
     canonical_json_bytes,
     load_json,
@@ -1157,7 +1158,7 @@ def test_signed_artifact_is_fetched_with_header_authority_and_staged_without_sec
             "headers": {
                 "accept": "application/octet-stream",
                 "authorization": "Bearer test-access-token-value",
-                "user-agent": "limitless-library/0.1.0a0",
+                "user-agent": f"limitless-library/{__version__}",
                 "Limitless-Capability": result["selection"]["immutable"]["authorization"]["value"],
             },
             "body": None,
