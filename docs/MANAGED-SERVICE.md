@@ -271,6 +271,12 @@ An already revoked release returns its existing state without creating another
 withdrawal request. Pending, quarantined, rejected, or retired work cannot be
 misrepresented as an active release eligible for withdrawal.
 
+Publication state prepared by an older client for multiple targets may have an
+invalid target order. The client rejects that state rather than rewriting its
+signature. Preserve it for diagnosis, then explicitly select a fresh
+`--state` path to prepare a new publication operation. The service may still
+require manual admission review for multiple targets.
+
 ### MCP method contribution
 
 The generic Library MCP also offers `limitless_register_method` after an agent

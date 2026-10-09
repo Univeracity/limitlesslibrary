@@ -1,0 +1,331 @@
+{
+  "expectedInterfaces": [
+    "repo.Pull-request/v1",
+    "repo.pull-request/v1",
+    "repo.pull_request/v1",
+    "repo.reviewed-change/v1"
+  ],
+  "intent": {
+    "buildContext": {
+      "architecture": "x86_64",
+      "interfaces": [
+        "limitless.mcp/v1"
+      ],
+      "platform": "linux",
+      "runtime": "python",
+      "version": "3.13"
+    },
+    "candidate": {
+      "capabilities": [
+        "limitless.mcp/v1"
+      ],
+      "summary": "Public synthetic interoperability fixture.",
+      "title": "Canonical target order fixture",
+      "treatment": "source-free-method"
+    },
+    "compatibility": {
+      "supportedTargets": [
+        {
+          "architecture": "any",
+          "interfaces": [
+            "repo.Pull-request/v1"
+          ],
+          "platform": "any",
+          "runtime": "any",
+          "versionRange": "any"
+        },
+        {
+          "architecture": "any",
+          "interfaces": [
+            "repo.pull-request/v1"
+          ],
+          "platform": "any",
+          "runtime": "any",
+          "versionRange": "any"
+        },
+        {
+          "architecture": "any",
+          "interfaces": [
+            "repo.pull_request/v1"
+          ],
+          "platform": "any",
+          "runtime": "any",
+          "versionRange": "any"
+        },
+        {
+          "architecture": "any",
+          "interfaces": [
+            "repo.reviewed-change/v1"
+          ],
+          "platform": "any",
+          "runtime": "any",
+          "versionRange": "any"
+        }
+      ],
+      "verifiedTargets": [
+        {
+          "evidenceDigests": [
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          ],
+          "target": {
+            "architecture": "any",
+            "interfaces": [
+              "repo.Pull-request/v1"
+            ],
+            "platform": "any",
+            "runtime": "any",
+            "versionRange": "any"
+          }
+        },
+        {
+          "evidenceDigests": [
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          ],
+          "target": {
+            "architecture": "any",
+            "interfaces": [
+              "repo.pull-request/v1"
+            ],
+            "platform": "any",
+            "runtime": "any",
+            "versionRange": "any"
+          }
+        },
+        {
+          "evidenceDigests": [
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          ],
+          "target": {
+            "architecture": "any",
+            "interfaces": [
+              "repo.pull_request/v1"
+            ],
+            "platform": "any",
+            "runtime": "any",
+            "versionRange": "any"
+          }
+        },
+        {
+          "evidenceDigests": [
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          ],
+          "target": {
+            "architecture": "any",
+            "interfaces": [
+              "repo.reviewed-change/v1"
+            ],
+            "platform": "any",
+            "runtime": "any",
+            "versionRange": "any"
+          }
+        }
+      ]
+    },
+    "contentObjects": [
+      {
+        "byteLength": 754,
+        "digest": "sha256:a931dda743363d20cc8399a8a7a5702e5209200321a4cbf8f1a6001d152f8d3d",
+        "role": "method"
+      }
+    ],
+    "destination": {
+      "audience": "public",
+      "collectionId": "collection:public"
+    },
+    "evidenceDigests": [
+      "sha256:b653eeebd891e707a97a0386b1c453516abb571f9a81213483fe59ecab79113c"
+    ],
+    "intentDigest": "sha256:eaf88fcc439ab2e131017ea9f9285c18e2e536a67f0a6019765f6780e76adb49",
+    "lineage": {
+      "lineageId": "lineage:clipboard-release",
+      "parents": [],
+      "releaseClass": "initial",
+      "supersedes": null,
+      "version": "1.0.0"
+    },
+    "publisher": {
+      "authorityId": "installation-space:88888888888888888888888888888888",
+      "keyId": "key:installation:15a874f40b0a5b68de06dda961e134c7",
+      "publisherId": "installation:88888888888888888888888888888888"
+    },
+    "requestId": "request:multitarget-order-vector",
+    "rights": {
+      "allowedUses": [
+        "derive-method"
+      ],
+      "grantedBy": "installation:88888888888888888888888888888888",
+      "hasAuthority": true,
+      "license": "CC0-1.0",
+      "policyDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    "schemaVersion": "limitless.service-submission-intent/1.2",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:installation:15a874f40b0a5b68de06dda961e134c7",
+      "value": "3o_5GIYb41iYBw9RJ54GcEPGaeb8H8MGSnSVYnshWx9O0JEaktMl3U9HLbnGjWuUMoM3JLvOAWVmYx9hLLM5Bw"
+    },
+    "submittedAt": "2026-08-20T23:00:00Z"
+  },
+  "oldDigestOrderedIntent": {
+    "buildContext": {
+      "architecture": "x86_64",
+      "interfaces": [
+        "limitless.mcp/v1"
+      ],
+      "platform": "linux",
+      "runtime": "python",
+      "version": "3.13"
+    },
+    "candidate": {
+      "capabilities": [
+        "limitless.mcp/v1"
+      ],
+      "summary": "Public synthetic interoperability fixture.",
+      "title": "Canonical target order fixture",
+      "treatment": "source-free-method"
+    },
+    "compatibility": {
+      "supportedTargets": [
+        {
+          "architecture": "any",
+          "interfaces": [
+            "repo.reviewed-change/v1"
+          ],
+          "platform": "any",
+          "runtime": "any",
+          "versionRange": "any"
+        },
+        {
+          "architecture": "any",
+          "interfaces": [
+            "repo.pull_request/v1"
+          ],
+          "platform": "any",
+          "runtime": "any",
+          "versionRange": "any"
+        },
+        {
+          "architecture": "any",
+          "interfaces": [
+            "repo.pull-request/v1"
+          ],
+          "platform": "any",
+          "runtime": "any",
+          "versionRange": "any"
+        },
+        {
+          "architecture": "any",
+          "interfaces": [
+            "repo.Pull-request/v1"
+          ],
+          "platform": "any",
+          "runtime": "any",
+          "versionRange": "any"
+        }
+      ],
+      "verifiedTargets": [
+        {
+          "evidenceDigests": [
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          ],
+          "target": {
+            "architecture": "any",
+            "interfaces": [
+              "repo.reviewed-change/v1"
+            ],
+            "platform": "any",
+            "runtime": "any",
+            "versionRange": "any"
+          }
+        },
+        {
+          "evidenceDigests": [
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          ],
+          "target": {
+            "architecture": "any",
+            "interfaces": [
+              "repo.pull_request/v1"
+            ],
+            "platform": "any",
+            "runtime": "any",
+            "versionRange": "any"
+          }
+        },
+        {
+          "evidenceDigests": [
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          ],
+          "target": {
+            "architecture": "any",
+            "interfaces": [
+              "repo.pull-request/v1"
+            ],
+            "platform": "any",
+            "runtime": "any",
+            "versionRange": "any"
+          }
+        },
+        {
+          "evidenceDigests": [
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          ],
+          "target": {
+            "architecture": "any",
+            "interfaces": [
+              "repo.Pull-request/v1"
+            ],
+            "platform": "any",
+            "runtime": "any",
+            "versionRange": "any"
+          }
+        }
+      ]
+    },
+    "contentObjects": [
+      {
+        "byteLength": 754,
+        "digest": "sha256:a931dda743363d20cc8399a8a7a5702e5209200321a4cbf8f1a6001d152f8d3d",
+        "role": "method"
+      }
+    ],
+    "destination": {
+      "audience": "public",
+      "collectionId": "collection:public"
+    },
+    "evidenceDigests": [
+      "sha256:b653eeebd891e707a97a0386b1c453516abb571f9a81213483fe59ecab79113c"
+    ],
+    "intentDigest": "sha256:160c637a4d704e134b1a2ca087817245b32d2e4834473bd7878814d94024f986",
+    "lineage": {
+      "lineageId": "lineage:clipboard-release",
+      "parents": [],
+      "releaseClass": "initial",
+      "supersedes": null,
+      "version": "1.0.0"
+    },
+    "publisher": {
+      "authorityId": "installation-space:88888888888888888888888888888888",
+      "keyId": "key:installation:15a874f40b0a5b68de06dda961e134c7",
+      "publisherId": "installation:88888888888888888888888888888888"
+    },
+    "requestId": "request:multitarget-order-vector",
+    "rights": {
+      "allowedUses": [
+        "derive-method"
+      ],
+      "grantedBy": "installation:88888888888888888888888888888888",
+      "hasAuthority": true,
+      "license": "CC0-1.0",
+      "policyDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    "schemaVersion": "limitless.service-submission-intent/1.2",
+    "signature": {
+      "algorithm": "ed25519",
+      "keyId": "key:installation:15a874f40b0a5b68de06dda961e134c7",
+      "value": "R0mZZ1nL7lh5noH4dV4WiQAmnzI6tUDXO1QxNYkVwdNZioLSrZrdMwMW5it8YpzKbFpHgmhuLOCt_dbBWIWGBw"
+    },
+    "submittedAt": "2026-08-20T23:00:00Z"
+  },
+  "publicKey": "u-ZkeGREbF_hCwIs3v15udaF23BwLhBnkIUTKvi1GTo"
+}

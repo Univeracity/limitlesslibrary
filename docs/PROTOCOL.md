@@ -133,3 +133,10 @@ the exact bytes.
 
 See [Managed-service connector](MANAGED-SERVICE.md) for one-action official
 activation, advanced profiles, and the HTTPS boundary.
+
+Compatibility target arrays in signed submission and release records use
+ascending canonical UTF-8 JSON bytes of each target; verified targets use
+their nested target. Builders normalize this order before signing. Digest
+ordering and locale collation are not wire order. Previously signed states
+with another order are rejected and require a new, explicitly prepared
+publication operation; they are never silently rewritten.

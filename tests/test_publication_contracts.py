@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from limitless_library.contracts import load_json, sha256_json
+from limitless_library.contracts import canonical_json_bytes, load_json, sha256_json
 from limitless_library.public_admission_contracts import (
     PublicAdmissionContractError,
     assessment_state,
@@ -20,12 +20,36 @@ from limitless_library.public_admission_contracts import (
 )
 from limitless_library.public_submission_contracts import (
     PublicSubmissionContractError,
+    build_submission_intent,
     validate_content_transfer_grant,
     validate_content_transfer_result,
     validate_immutable_release,
     validate_submission_intent,
     validate_submission_plan,
 )
+from limitless_library.service_identity import InstallationSigner
+
+
+def test_multi_target_wire_order_matches_the_service_and_rejects_old_signatures() -> None:
+    fixture = load_json(Path(str(files("limitless_library.conformance").joinpath("multi-target-submission-1.2.json"))))
+    key = _decode(fixture["publicKey"])
+    intent = fixture["intent"]
+    keys = {intent["publisher"]["keyId"]: key}
+    assert validate_submission_intent(intent, public_keys=keys) == intent
+    targets = intent["compatibility"]["supportedTargets"]
+    assert targets == sorted(targets, key=canonical_json_bytes)
+    assert [target["interfaces"][0] for target in targets] == fixture["expectedInterfaces"]
+    assert [proof["target"] for proof in intent["compatibility"]["verifiedTargets"]] == targets
+    with pytest.raises(PublicSubmissionContractError, match="digest"):
+        validate_submission_intent(fixture["oldDigestOrderedIntent"], public_keys=keys)
+
+    signer = InstallationSigner.generate()
+    fields = deepcopy({k: v for k, v in intent.items() if k not in {"schemaVersion", "signature", "intentDigest"}})
+    fields["publisher"]["keyId"] = signer.key_id
+    fields["compatibility"]["supportedTargets"].reverse()
+    fields["compatibility"]["verifiedTargets"].reverse()
+    built = build_submission_intent(signer=signer, **fields)
+    assert built["compatibility"] == intent["compatibility"]
 
 
 def _corpus(name: str) -> dict[str, Any]:
