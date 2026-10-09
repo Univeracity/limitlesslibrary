@@ -1,6 +1,6 @@
 # Contributing
 
-Limitless Library is pre-alpha. Small changes that preserve the fail-closed
+Limitless Library is alpha. Small changes that preserve the fail-closed
 trust model are easiest to review.
 
 1. Open an issue describing the receiver problem and the invariant affected.

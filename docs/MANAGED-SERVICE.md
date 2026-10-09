@@ -271,11 +271,12 @@ An already revoked release returns its existing state without creating another
 withdrawal request. Pending, quarantined, rejected, or retired work cannot be
 misrepresented as an active release eligible for withdrawal.
 
-Publication state prepared by an older client for multiple targets may have an
-invalid target order. The client rejects that state rather than rewriting its
-signature. Preserve it for diagnosis, then explicitly select a fresh
-`--state` path to prepare a new publication operation. The service may still
-require manual admission review for multiple targets.
+Publication state prepared by an older client for multiple targets retains its
+original authenticated target order, digest, signature, and submission reference.
+It can resume without preparing a replacement operation. New builders choose
+canonical UTF-8 target order before signing; readers never reorder an existing
+signed record. The service may still require manual admission review for multiple
+targets. Compatibility does not turn pending intake into automatic admission.
 
 ### MCP method contribution
 

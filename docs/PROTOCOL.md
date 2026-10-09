@@ -134,9 +134,12 @@ the exact bytes.
 See [Managed-service connector](MANAGED-SERVICE.md) for one-action official
 activation, advanced profiles, and the HTTPS boundary.
 
-Compatibility target arrays in signed submission and release records use
-ascending canonical UTF-8 JSON bytes of each target; verified targets use
-their nested target. Builders normalize this order before signing. Digest
-ordering and locale collation are not wire order. Previously signed states
-with another order are rejected and require a new, explicitly prepared
-publication operation; they are never silently rewritten.
+New submission builders order compatibility targets by ascending canonical
+UTF-8 JSON bytes of each target; verified targets use their nested target.
+Readers preserve the received array order when validating digests and
+signatures. Legacy hash-ordered or locale-ordered submissions, resumable state,
+and releases therefore retain their authenticated bytes and identifiers.
+Releases copy the submitted order. Reordering a signed array without a new
+valid signature is rejected. Target bounds, uniqueness, and exact evidence
+membership checks apply equally to every order; no client-version guess or
+unsigned normalization can authorize a change.

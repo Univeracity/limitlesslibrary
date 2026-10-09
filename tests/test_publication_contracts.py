@@ -30,7 +30,7 @@ from limitless_library.public_submission_contracts import (
 from limitless_library.service_identity import InstallationSigner
 
 
-def test_multi_target_wire_order_matches_the_service_and_rejects_old_signatures() -> None:
+def test_new_target_order_is_canonical_and_legacy_signatures_are_preserved() -> None:
     fixture = load_json(Path(str(files("limitless_library.conformance").joinpath("multi-target-submission-1.2.json"))))
     key = _decode(fixture["publicKey"])
     intent = fixture["intent"]
@@ -40,8 +40,8 @@ def test_multi_target_wire_order_matches_the_service_and_rejects_old_signatures(
     assert targets == sorted(targets, key=canonical_json_bytes)
     assert [target["interfaces"][0] for target in targets] == fixture["expectedInterfaces"]
     assert [proof["target"] for proof in intent["compatibility"]["verifiedTargets"]] == targets
-    with pytest.raises(PublicSubmissionContractError, match="digest"):
-        validate_submission_intent(fixture["oldDigestOrderedIntent"], public_keys=keys)
+    legacy = fixture["oldDigestOrderedIntent"]
+    assert validate_submission_intent(legacy, public_keys=keys) == legacy
 
     signer = InstallationSigner.generate()
     fields = deepcopy({k: v for k, v in intent.items() if k not in {"schemaVersion", "signature", "intentDigest"}})
@@ -50,6 +50,58 @@ def test_multi_target_wire_order_matches_the_service_and_rejects_old_signatures(
     fields["compatibility"]["verifiedTargets"].reverse()
     built = build_submission_intent(signer=signer, **fields)
     assert built["compatibility"] == intent["compatibility"]
+
+
+@pytest.mark.parametrize("field", ["supportedTargets", "verifiedTargets"])
+def test_signed_target_order_cannot_change_without_a_new_signature(field: str) -> None:
+    fixture = load_json(Path(str(files("limitless_library.conformance").joinpath("multi-target-submission-1.2.json"))))
+    changed = deepcopy(fixture["oldDigestOrderedIntent"])
+    keys = {changed["publisher"]["keyId"]: _decode(fixture["publicKey"])}
+    changed["compatibility"][field].reverse()
+    with pytest.raises(PublicSubmissionContractError, match="digest"):
+        validate_submission_intent(changed, public_keys=keys)
+    changed["intentDigest"] = sha256_json({k: v for k, v in changed.items() if k not in {"intentDigest", "signature"}})
+    with pytest.raises(PublicSubmissionContractError, match="signature"):
+        validate_submission_intent(changed, public_keys=keys)
+
+
+@pytest.mark.parametrize("mutation", ["duplicate-target", "duplicate-proof", "unclaimed-proof", "over-limit"])
+def test_legacy_order_does_not_bypass_target_validation(mutation: str) -> None:
+    fixture = load_json(Path(str(files("limitless_library.conformance").joinpath("multi-target-submission-1.2.json"))))
+    changed = deepcopy(fixture["oldDigestOrderedIntent"])
+    compatibility = changed["compatibility"]
+    if mutation == "duplicate-target":
+        compatibility["supportedTargets"].append(compatibility["supportedTargets"][0])
+    elif mutation == "duplicate-proof":
+        compatibility["verifiedTargets"].append(compatibility["verifiedTargets"][0])
+    elif mutation == "unclaimed-proof":
+        compatibility["verifiedTargets"][0]["target"]["interfaces"] = ["repo.unclaimed/v1"]
+    else:
+        compatibility["supportedTargets"] *= 5
+    with pytest.raises(PublicSubmissionContractError, match="compatibility|unique|exact supported"):
+        validate_submission_intent(changed, public_keys={changed["publisher"]["keyId"]: _decode(fixture["publicKey"])})
+
+
+def test_legacy_release_preserves_signed_intent_and_plan_identity() -> None:
+    fixture = load_json(Path(str(files("limitless_library.conformance").joinpath("multi-target-submission-1.2.json"))))
+    legacy = fixture["oldDigestOrderedIntent"]
+    key = fixture["releasePublicKey"]
+    keys = {key["keyId"]: _decode(key["publicKey"])}
+    plan = validate_submission_plan(fixture["legacyAcceptedPlan"], public_keys=keys, expected_intent=legacy)
+    release = validate_immutable_release(
+        fixture["legacyRelease"], public_keys=keys, expected_intent=legacy, expected_plan=plan
+    )
+    assert release == fixture["legacyRelease"]
+    assert release["compatibility"] == legacy["compatibility"]
+    changed = deepcopy(release)
+    changed["compatibility"]["verifiedTargets"].reverse()
+    with pytest.raises(PublicSubmissionContractError, match="identity"):
+        validate_immutable_release(changed, public_keys=keys)
+    body = {k: v for k, v in changed.items() if k not in {"releaseId", "releaseDigest", "signature"}}
+    changed["releaseDigest"] = sha256_json(body)
+    changed["releaseId"] = "release:" + changed["releaseDigest"][7:39]
+    with pytest.raises(PublicSubmissionContractError, match="signature"):
+        validate_immutable_release(changed, public_keys=keys)
 
 
 def _corpus(name: str) -> dict[str, Any]:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -15,6 +16,7 @@ from limitless_library.public_submission_contracts import (
 )
 from limitless_library.publication import (
     PublicationError,
+    _new_state,
     _source_descriptor,
     publication_status,
     publish_draft,
@@ -294,15 +296,23 @@ def _write_draft(tmp_path: Path) -> Path:
     return path
 
 
-@pytest.mark.parametrize("content", [b"{}", b'{"summary":"a","summary":"b"}', b"not json",
-                                     b'{ "summary": "pretty JSON" }'])
+@pytest.mark.parametrize(
+    "content", [b"{}", b'{"summary":"a","summary":"b"}', b"not json", b'{ "summary": "pretty JSON" }']
+)
 def test_invalid_method_never_creates_signed_state_or_uploads(tmp_path: Path, content: bytes) -> None:
     connector, transport, signer, publisher = _fixture()
     draft = _write_draft(tmp_path)
     (tmp_path / "method.json").write_bytes(content)
     with pytest.raises(PublicationError, match="publication method"):
-        publish_draft(connector, draft_path=draft, state_path=None, signer=signer, publisher=publisher,
-                      accepted_publication_policy_digest=transport.policy["digest"], now=NOW)
+        publish_draft(
+            connector,
+            draft_path=draft,
+            state_path=None,
+            signer=signer,
+            publisher=publisher,
+            accepted_publication_policy_digest=transport.policy["digest"],
+            now=NOW,
+        )
     assert not draft.with_name(draft.name + ".state.json").exists()
     assert transport.intent is None
     assert transport.upload_calls == 0
@@ -345,8 +355,13 @@ def test_method_preflight_preserves_accepted_exact_bytes(tmp_path: Path, newline
     assert source.read_bytes() == payload
 
 
-@pytest.mark.parametrize("change", [{"evaluation": []}, {"steps": [{"index": True, "instruction": "Check",
-                                           "check": "fact-present", "expected": "Pass"}]}])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"evaluation": []},
+        {"steps": [{"index": True, "instruction": "Check", "check": "fact-present", "expected": "Pass"}]},
+    ],
+)
 def test_method_preflight_matches_service_structural_rejections(tmp_path: Path, change: dict) -> None:
     _write_draft(tmp_path)
     source = tmp_path / "method.json"
@@ -399,13 +414,73 @@ def test_one_command_publication_is_resumable_and_cwd_independent(tmp_path: Path
     assert state.stat().st_mode & 0o777 == 0o600
 
 
+def test_legacy_signed_state_resumes_without_rewriting_or_reuploading(tmp_path: Path) -> None:
+    connector, transport, signer, publisher = _fixture()
+    draft_path = _write_draft(tmp_path)
+    fixture = load_json(
+        Path(__file__).parents[1] / "src/limitless_library/conformance/multi-target-submission-1.2.json"
+    )
+    draft = load_json(draft_path)
+    draft["compatibility"] = deepcopy(fixture["oldDigestOrderedIntent"]["compatibility"])
+    draft_path.write_bytes(canonical_json_bytes(draft) + b"\n")
+    saved = _new_state(
+        draft=draft,
+        draft_path=draft_path,
+        service_id=connector.profile.service_id,
+        policy=transport.policy,
+        signer=signer,
+        publisher=publisher,
+        now=NOW,
+    )
+    saved["intent"]["compatibility"] = draft["compatibility"]
+    unsigned = {k: v for k, v in saved["intent"].items() if k not in {"intentDigest", "signature"}}
+    saved["intent"]["intentDigest"] = sha256_json(unsigned)
+    signed = {**unsigned, "intentDigest": saved["intent"]["intentDigest"]}
+    saved["intent"]["signature"]["value"] = signer.sign(canonical_json_bytes(signed))
+    state_path = tmp_path / "legacy-state.json"
+    original = canonical_json_bytes(saved) + b"\n"
+    state_path.write_bytes(original)
+    state_path.chmod(0o600)
+    first = publish_draft(
+        connector,
+        draft_path=draft_path,
+        state_path=state_path,
+        signer=signer,
+        publisher=publisher,
+        accepted_publication_policy_digest=transport.policy["digest"],
+        now=NOW,
+    )
+    second = publish_draft(
+        connector,
+        draft_path=draft_path,
+        state_path=state_path,
+        signer=signer,
+        publisher=publisher,
+        accepted_publication_policy_digest=transport.policy["digest"],
+        now=NOW,
+    )
+    assert transport.intent == saved["intent"]
+    assert (
+        first["submissionRef"]
+        == second["submissionRef"]
+        == public_submission_ref(intent_digest=saved["intent"]["intentDigest"])
+    )
+    assert state_path.read_bytes() == original
+    assert transport.upload_calls == 1
+    assert second["uploadedObjects"] == []
+    transport.admission_state = "active"
+    assert (
+        publication_status(connector, state_path=state_path, signer=signer, publisher=publisher)["admissionState"]
+        == "active"
+    )
+    assert state_path.read_bytes() == original
+
+
 def test_artifact_publication_uses_current_format_aware_intent(tmp_path: Path) -> None:
     connector, transport, signer, publisher = _fixture()
     draft_path = _write_draft(tmp_path)
     draft = strict_json_loads(draft_path.read_text(encoding="utf-8"))
-    bundle = build_exact_file_bundle(
-        {"manifest.json": b'{"schemaVersion":1,"id":"example.plugin"}\n'}
-    )
+    bundle = build_exact_file_bundle({"manifest.json": b'{"schemaVersion":1,"id":"example.plugin"}\n'})
     (tmp_path / "plugin.bundle").write_bytes(bundle)
     draft["candidate"] = {
         **draft["candidate"],
