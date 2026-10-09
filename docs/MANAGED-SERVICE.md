@@ -253,9 +253,9 @@ generation. Older releases stay opaque rather than being retroactively
 classified from their bytes or provenance.
 
 The bundled example is directly publishable from a supported release after the
-publisher reviews and accepts the currently advertised policy digest. The open
-client validates the public wire lifecycle but does not
-contain the private admission engine, ranking service, or managed storage.
+publisher reviews and accepts the currently advertised policy digest. The client
+validates the public wire lifecycle. Admission, ranking, and managed storage are
+provided by the service.
 
 The returned owner-only state is also the durable handle for follow-up:
 
