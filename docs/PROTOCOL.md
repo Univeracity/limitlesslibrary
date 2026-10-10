@@ -26,10 +26,13 @@ An offer is eligible only when all of the following hold:
 4. Every offer constraint is present in the receiver constraints.
 5. Every required toolchain value is in the offer's allowed value list.
 
-The unique highest-priority eligible offer wins. When the optional local
-`objective` is present, a unique positive lexical match may break a tie among
-only the highest-priority eligible offers; an absent, unmatched, or still-tied
-objective abstains. Objective relevance never overrides rights, compatibility,
+Without an objective, the unique highest-priority eligible offer wins and a tie
+abstains. When the optional local `objective` is present, selection requires a
+unique positive lexical match among the highest-priority eligible offers, even
+when there is only one. An unmatched or still-tied objective abstains. This is a
+conservative lexical check, not proof of semantic suitability; synonym-only
+queries may abstain and shared words may still require receiver review.
+Objective relevance never overrides rights, compatibility,
 scope, state, or explicit priority. Exact offers produce `reuse`/`exact-adoption`; method offers produce
 `instantiate`/`method-guided`. Abstention contains no candidate details.
 
@@ -42,11 +45,23 @@ implements `server/discover`, `tools/list`, and `tools/call` independently.
 
 The `2025-06-18` and legacy `2025-03-26` modes require a successful
 `initialize` followed by `notifications/initialized` before tool requests, and
-the server echoes the admitted revision. Client or server identity metadata is
+the server echoes a supported requested revision. For another nonempty version
+string it offers `2025-06-18`, which the client must support to continue.
+Malformed version values are rejected. Client or server identity metadata is
 diagnostic and never an authorization input.
 
-The MCP tool returns the decision as `structuredContent` and as canonical JSON
-text for clients that consume text content. Artifact bytes never cross MCP.
+`limitless_query_before_work` returns the decision as `structuredContent` and
+canonical JSON text for clients that consume text content. Artifact bytes never
+cross MCP. `limitless_register_method` accepts one original, checked, source-free
+method after useful work. It records title, task kind, observed outcome, target
+platform, and the canonical method fields (`summary`, ordered `steps` with
+`instruction`/`check`/`expected`, `constraints`, `evaluation`, `limitations`).
+It returns a stable method reference and local/public submission status. The
+default is owner-private local capture. Public submission requires both MCP
+startup flags for standing authorization and the exact reviewed policy digest;
+registration queues the background publisher, while service admission remains
+independent. `verifiedTargets` stays empty until separate receiver evidence
+exists. Method capture does not install artifact bytes.
 
 ## Managed-service façade
 
@@ -118,3 +133,13 @@ the exact bytes.
 
 See [Managed-service connector](MANAGED-SERVICE.md) for one-action official
 activation, advanced profiles, and the HTTPS boundary.
+
+New submission builders order compatibility targets by ascending canonical
+UTF-8 JSON bytes of each target; verified targets use their nested target.
+Readers preserve the received array order when validating digests and
+signatures. Legacy hash-ordered or locale-ordered submissions, resumable state,
+and releases therefore retain their authenticated bytes and identifiers.
+Releases copy the submitted order. Reordering a signed array without a new
+valid signature is rejected. Target bounds, uniqueness, and exact evidence
+membership checks apply equally to every order; no client-version guess or
+unsigned normalization can authorize a change.

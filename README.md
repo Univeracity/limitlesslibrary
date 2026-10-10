@@ -127,6 +127,12 @@ scanner for secrets embedded in free text. See the
 [local demo evidence map](docs/LOCAL-DEMO.md) for the generated artifacts and
 manual inspection commands.
 
+The terminal shows `USEFUL LOCAL RESULT`: the sample authorization and token
+fields are redacted while its agent, action, and repository fields survive.
+The same run reports a verified exact component, source-free guidance, and an
+abstention. These are deterministic examples from the bundled local catalog.
+Live service queries use the current public catalog and may correctly abstain.
+
 ## How verified reuse works
 
 For exact reuse, the receiver—not the capsule—controls the trust boundary:
@@ -196,12 +202,30 @@ Start the bounded local stdio server:
 limitless-mcp --catalog examples/catalog
 ```
 
-It exposes `limitless_query_before_work` and supports stateless MCP
+It exposes `limitless_query_before_work` and `limitless_register_method` and supports stateless MCP
 `2026-07-28` requests plus the `2025-06-18` and legacy `2025-03-26`
 initialization flows. Initialization-era clients complete `initialize` and
-`notifications/initialized` before requesting a tool. MCP is a decision
-channel, not an artifact transport; installation remains an explicit
-receiver-local operation.
+`notifications/initialized` before requesting a tool. Agents query before
+material work. After checking a useful original result, they can register a
+concise source-free method with steps, checks, applicability, and limits. The
+method object follows the
+[canonical method example](examples/publication/method.json). The default stores
+it privately under `$XDG_DATA_HOME/limitless-library/methods`
+(or `~/.local/share/limitless-library/methods`). Repeating the same registration
+returns the same method reference. A registration does not assert that the
+service has verified the method or accepted it into its catalog. Query results
+remain a decision channel, not an artifact transport; installation remains an
+explicit receiver-local operation.
+
+An owner who wants new methods submitted to the public service can activate
+the service, inspect and review its publication policy, then configure the MCP
+command with **both** `--submit-methods-publicly` and
+`--public-method-policy-digest sha256:<reviewed digest>`. This is standing
+authorization to publish independently authored CC0 methods. The tool queues
+submission in a separate process so normal task completion does not wait for
+network or admission; the service still decides whether to admit each method.
+Local-only is the default. The [managed-service guide](docs/MANAGED-SERVICE.md)
+explains status, retries, and revocation.
 
 Python callers can use `query_local(...)` or `McpStdioConnector`. See
 [Protocol](docs/PROTOCOL.md).
@@ -222,8 +246,8 @@ limitless agent-connect antigravity --catalog /absolute/path/to/catalog
 The command adds one named `limitless-library` stdio server to Antigravity's
 documented MCP profile. It uses the exact Python environment that ran
 `limitless`, so there is no separate executable to find or PATH assumption to
-maintain. Restart Antigravity CLI, then its MCP instructions and the
-`limitless_query_before_work` tool are available before material work.
+maintain. Restart Antigravity CLI, then its MCP instructions and the query and
+method registration tools are available.
 
 ```bash
 limitless agent-status antigravity
@@ -271,13 +295,28 @@ command; from a source checkout, use `./scripts/limitless` instead.
 ```bash
 limitless service-activate
 limitless service-inspect
-limitless service-query --request ./service-query.json
+limitless service-query \
+  --request-id request:example-001 \
+  --objective "Verify prior work with receiver-owned checks and observed adoption" \
+  --receiver ./examples/receiver-context.json
 
 # When the verified result selects an exact artifact:
 limitless service-query \
-  --request ./service-query.json \
+  --request-id request:example-002 \
+  --objective "Find an exact component compatible with this receiver" \
+  --receiver ./examples/receiver-context.json \
   --artifact-output ./selected.bin
 ```
+
+Inspect and adapt [the service receiver example](examples/receiver-context.json)
+to the actual target before querying. It declares an agent on Linux/x86_64;
+it is not automatic host detection. `execution` describes the agent host,
+`targets` describes where the work must fit, and `allowedUse` states its intended
+use. For multiple targets, choose `all-targets` with `selectedTarget: null`, or
+`one-target` with a declared target ID. The `{constraints, toolchain}` receiver
+inside `examples/requests/` belongs to local queries and cannot be passed as a
+service receiver. The client builds fresh timestamps and a query digest; advanced
+callers can still submit a complete current query with `--request PATH`.
 
 The service accepts anonymous activation, queries, outcome evidence, and
 public contributions. A contribution can contain an independently authored
@@ -317,7 +356,20 @@ contribution is reported honestly rather than mistaken for a network failure.
 The client does not scan or upload a workspace. Artifact sources must already
 be canonical
 `limitless.exact-file-bundle/1.0` payloads; the client verifies that shape
-locally and binds it into the current signed publication intent. See the
+locally and binds it into the current signed publication intent. Method files
+also require validated canonical JSON: sorted object keys, compact UTF-8 JSON,
+and at most one trailing newline. The bundled method already meets that rule.
+For a hand-formatted method, create a new canonical file locally:
+
+```bash
+limitless seal-method --draft ./my-method.json --output ./my-method.canonical.json
+```
+
+Name that new file in the publication draft's `objects` list. `seal-method`
+does not connect or publish, and refuses to overwrite a file. Publication
+rejects malformed or noncanonical methods before signing new state or uploading;
+it never rewrites bytes already named by a resumable operation. Auxiliary
+manifest and verification files retain their own byte contracts. See the
 [managed-service connector](docs/MANAGED-SERVICE.md).
 
 ## Authoring

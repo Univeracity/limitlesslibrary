@@ -29,6 +29,7 @@ from .publication import (
     publication_status,
     publish_draft,
     revoke_publication,
+    seal_publication_method,
 )
 from .sandbox import containment_readiness
 from .service_connector import (
@@ -36,6 +37,7 @@ from .service_connector import (
     ServiceConnectorError,
     ServiceProfile,
 )
+from .service_contracts import PublicServiceContractError, validate_service_receiver_context
 from .service_identity import installation_publisher_authority
 
 
@@ -188,7 +190,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     service_query.add_argument("--request", type=Path)
     service_query.add_argument("--objective")
-    service_query.add_argument("--receiver", type=Path)
+    service_query.add_argument("--receiver", type=Path, help="service receiver context JSON; see examples/receiver-context.json")
     service_query.add_argument("--request-id")
     service_query.add_argument("--output", type=Path)
     service_query.add_argument(
@@ -196,6 +198,10 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="fetch a selected exact artifact into this new file",
     )
+
+    method = subparsers.add_parser("seal-method", help="validate and write canonical method JSON locally without publishing")
+    method.add_argument("--draft", type=Path, required=True)
+    method.add_argument("--output", type=Path, required=True)
 
     capsule = subparsers.add_parser("seal-capsule", help="bind a capsule draft to exact payload bytes")
     capsule.add_argument("--draft", type=Path, required=True)
@@ -272,18 +278,25 @@ def main() -> None:
                 }
             )
         elif args.command == "service-query":
-            connector = _service_connector(args.profile)
             if args.request is not None:
                 if any(item is not None for item in (args.objective, args.receiver, args.request_id)):
                     raise ServiceConnectorError("--request cannot be combined with query-building arguments")
                 request = load_json(args.request)
+                connector = _service_connector(args.profile)
             else:
                 if not args.objective or args.receiver is None or not args.request_id:
                     raise ServiceConnectorError("use --request, or provide --objective, --receiver, and --request-id")
+                try:
+                    receiver = validate_service_receiver_context(load_json(args.receiver))
+                except PublicServiceContractError as error:
+                    raise ServiceConnectorError(
+                        f"{error}; use a service receiver context (see examples/receiver-context.json)"
+                    ) from error
+                connector = _service_connector(args.profile)
                 request = connector.build_query(
                     request_id=args.request_id,
                     objective=args.objective,
-                    receiver_context=load_json(args.receiver),
+                    receiver_context=receiver,
                 )
             result = connector.query(request)
             staged = None
@@ -334,6 +347,8 @@ def main() -> None:
                     reason_code=args.reason_code,
                 )
             _print(result)
+        elif args.command == "seal-method":
+            _print(seal_publication_method(args.draft, args.output))
         elif args.command == "seal-capsule":
             write_new_json(args.output, seal_capsule(load_json(args.draft), args.root))
         elif args.command == "seal-recipe":

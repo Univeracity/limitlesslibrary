@@ -66,15 +66,33 @@ def test_modern_mcp_discovers_and_queries_one_structured_tool() -> None:
     assert response["result"]["structuredContent"]["decision"] == "reuse"
 
 
-@pytest.mark.parametrize("protocol_version", [STABLE_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION])
-def test_initialize_eras_preserve_query_first_instructions(protocol_version: str) -> None:
+@pytest.mark.parametrize(
+    ("protocol_version", "expected"),
+    [
+        (STABLE_PROTOCOL_VERSION, STABLE_PROTOCOL_VERSION),
+        (LEGACY_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION),
+        ("2025-11-25", STABLE_PROTOCOL_VERSION),
+        ("2099-01-01", STABLE_PROTOCOL_VERSION),
+    ],
+)
+def test_initialize_eras_preserve_query_first_instructions(protocol_version: str, expected: str) -> None:
     response = handle_message(
         LocalCatalog(CATALOG_PATH),
         _initialize_message(protocol_version),
     )
 
-    assert response["result"]["protocolVersion"] == protocol_version
+    assert response["result"]["protocolVersion"] == expected
     assert response["result"]["instructions"] == SERVER_INSTRUCTIONS
+
+
+@pytest.mark.parametrize("protocol_version", [None, "", " \t", 42, True, [], {}])
+def test_initialize_rejects_malformed_protocol_version(protocol_version: object) -> None:
+    message = _initialize_message(STABLE_PROTOCOL_VERSION)
+    message["params"]["protocolVersion"] = protocol_version
+
+    response = handle_message(LocalCatalog(CATALOG_PATH), message)
+
+    assert response["error"]["code"] == -32602
 
 
 def test_initialize_rejects_missing_required_client_fields() -> None:
@@ -162,9 +180,16 @@ def test_generic_dispatcher_returns_tool_error_without_hiding_protocol_success()
     assert invalid["error"]["code"] == -32602
 
 
-@pytest.mark.parametrize("protocol_version", [STABLE_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION])
+@pytest.mark.parametrize(
+    ("protocol_version", "expected"),
+    [
+        (STABLE_PROTOCOL_VERSION, STABLE_PROTOCOL_VERSION),
+        (LEGACY_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION),
+        ("2025-11-25", STABLE_PROTOCOL_VERSION),
+    ],
+)
 def test_generic_session_requires_initialize_but_keeps_modern_stateless(
-    protocol_version: str,
+    protocol_version: str, expected: str,
 ) -> None:
     dispatcher = McpToolDispatcher(
         server_name="fixture",
@@ -206,7 +231,7 @@ def test_generic_session_requires_initialize_but_keeps_modern_stateless(
 
     assert held["error"]["code"] == -32600
     assert modern["result"]["structuredContent"] == {"era": "modern"}
-    assert initialized["result"]["protocolVersion"] == protocol_version
+    assert initialized["result"]["protocolVersion"] == expected
     assert still_held["error"]["code"] == -32600
     assert initialized_notification is None
     assert admitted["result"]["structuredContent"] == {"era": "initialized"}
@@ -359,10 +384,11 @@ def test_bounded_stdio_connector_validates_request_binding() -> None:
     assert decision["selected"]["offer"]["id"] == "offer:hello-python-exact"
 
 
-def test_stdio_server_completes_initialization_era_lifecycle() -> None:
+@pytest.mark.parametrize("protocol_version", [STABLE_PROTOCOL_VERSION, "2025-11-25"])
+def test_stdio_server_completes_initialization_era_lifecycle(protocol_version: str) -> None:
     request = load_json(REQUEST)
     messages = [
-        _initialize_message(STABLE_PROTOCOL_VERSION),
+        _initialize_message(protocol_version),
         {"jsonrpc": "2.0", "method": "notifications/initialized"},
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
         {

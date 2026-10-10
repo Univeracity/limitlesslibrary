@@ -35,6 +35,7 @@ from urllib.request import (
     build_opener,
 )
 
+from . import __version__
 from ._service_support import decode_root_keys
 from .contracts import (
     ContractError,
@@ -81,6 +82,7 @@ from .service_contracts import (
     SERVICE_QUERY_RESULT_SCHEMA_VERSION_1_5,
     SERVICE_QUERY_RESULT_SCHEMA_VERSIONS,
     SERVICE_QUERY_SCHEMA_VERSION,
+    PublicServiceContractError,
     active_result_keys,
     build_service_query,
     service_query_audiences,
@@ -90,6 +92,7 @@ from .service_contracts import (
     validate_service_profile,
     validate_service_query,
     validate_service_query_result,
+    validate_service_receiver_context,
     validate_service_root_key_transition_set,
 )
 
@@ -657,7 +660,7 @@ class ServiceConnector:
     ) -> dict[str, str]:
         headers = {
             "accept": "application/json",
-            "user-agent": "limitless-library/0.1.0a0",
+            "user-agent": f"limitless-library/{__version__}",
         }
         if content:
             headers["content-type"] = "application/json"
@@ -966,7 +969,7 @@ class ServiceConnector:
                 descriptor = -1
                 headers = {
                     "accept": immutable["mediaType"],
-                    "user-agent": "limitless-library/0.1.0a0",
+                    "user-agent": f"limitless-library/{__version__}",
                 }
                 if authorization is not None:
                     headers.update(
@@ -1088,7 +1091,7 @@ class ServiceConnector:
             headers={
                 "accept": _ARTIFACT_CONTENT_TYPE,
                 "authorization": f"Bearer {self.profile.access_token}",
-                "user-agent": "limitless-library/0.1.0a0",
+                "user-agent": f"limitless-library/{__version__}",
                 authorization["header"]: authorization["value"],
             },
             body=None,
@@ -1428,7 +1431,7 @@ class ServiceConnector:
                     "content-type": _ARTIFACT_CONTENT_TYPE,
                     "content-length": str(current.st_size),
                     "x-limitless-content-digest": digest,
-                    "user-agent": "limitless-library/0.1.0a0",
+                    "user-agent": f"limitless-library/{__version__}",
                 },
                 source=opened,
                 byte_length=current.st_size,
@@ -1560,6 +1563,12 @@ class ServiceConnector:
         issued_at: datetime | None = None,
         ttl_seconds: int = 60,
     ) -> dict[str, Any]:
+        try:
+            receiver_context = validate_service_receiver_context(receiver_context)
+        except PublicServiceContractError as error:
+            raise ServiceConnectorError(
+                f"{error}; use a service receiver context (see examples/receiver-context.json)"
+            ) from error
         verified = self.inspect()
         compatible_results = [
             version
@@ -1569,17 +1578,20 @@ class ServiceConnector:
         ]
         if not compatible_results:
             raise ServiceConnectorError("service does not advertise a policy-bound result generation")
-        return build_service_query(
-            request_id=request_id,
-            objective=objective,
-            receiver_context=receiver_context,
-            requested_audiences=self.profile.requested_audiences,
-            requested_treatments=requested_treatments,
-            execution_mode=self.profile.execution_mode,
-            history_mode=self.profile.history_mode,
-            client_name="limitless-library-python",
-            client_version="0.1.0a0",
-            issued_at=issued_at or self._now(),
-            ttl_seconds=ttl_seconds,
-            supported_result_version=compatible_results[-1],
-        )
+        try:
+            return build_service_query(
+                request_id=request_id,
+                objective=objective,
+                receiver_context=receiver_context,
+                requested_audiences=self.profile.requested_audiences,
+                requested_treatments=requested_treatments,
+                execution_mode=self.profile.execution_mode,
+                history_mode=self.profile.history_mode,
+                client_name="limitless-library-python",
+                client_version=__version__,
+                issued_at=issued_at or self._now(),
+                ttl_seconds=ttl_seconds,
+                supported_result_version=compatible_results[-1],
+            )
+        except PublicServiceContractError as error:
+            raise ServiceConnectorError(f"invalid service query: {error}") from error

@@ -160,12 +160,13 @@ def _environment(value: Any, field: str, *, version_field: str) -> dict[str, Any
 
 
 def _compatibility(value: Any) -> dict[str, Any]:
+    """Validate signed target arrays without changing their authenticated order."""
+
     item = _exact(value, {"supportedTargets", "verifiedTargets"}, "compatibility")
     raw_supported = item["supportedTargets"]
     if not isinstance(raw_supported, list) or not 1 <= len(raw_supported) <= 16:
         raise PublicSubmissionContractError("compatibility supportedTargets are invalid")
     supported = [_environment(target, "supported target", version_field="versionRange") for target in raw_supported]
-    supported = sorted(supported, key=sha256_json)
     if len({sha256_json(target) for target in supported}) != len(supported):
         raise PublicSubmissionContractError("compatibility supportedTargets must be unique")
     raw_verified = item["verifiedTargets"]
@@ -190,10 +191,18 @@ def _compatibility(value: Any) -> dict[str, Any]:
                 ),
             }
         )
-    verified = sorted(verified, key=lambda proof: sha256_json(proof["target"]))
     if len({sha256_json(proof["target"]) for proof in verified}) != len(verified):
         raise PublicSubmissionContractError("compatibility verifiedTargets must be unique")
     return {"supportedTargets": supported, "verifiedTargets": verified}
+
+
+def _canonical_compatibility(value: Any) -> dict[str, Any]:
+    """Choose deterministic target order only when preparing a new signature."""
+
+    checked = _compatibility(value)
+    checked["supportedTargets"].sort(key=canonical_json_bytes)
+    checked["verifiedTargets"].sort(key=lambda proof: canonical_json_bytes(proof["target"]))
+    return checked
 
 
 def _release_reference(value: Any, field: str) -> dict[str, str]:
@@ -506,6 +515,8 @@ def build_submission_intent(
     """Build one current, publisher-signed submission intent."""
 
     body = {"schemaVersion": schema_version, **fields}
+    if "compatibility" in body:
+        body["compatibility"] = _canonical_compatibility(body["compatibility"])
     submitted_at = body.get("submittedAt")
     if isinstance(submitted_at, datetime) and submitted_at.tzinfo is not None:
         body["submittedAt"] = isoformat_utc(submitted_at.astimezone(UTC).replace(microsecond=0))
@@ -534,6 +545,8 @@ def build_legacy_submission_intent(**fields: Any) -> dict[str, Any]:
     """Build an unsigned 1.0 intent solely for compatibility fixtures."""
 
     body = {"schemaVersion": SUBMISSION_INTENT_SCHEMA_VERSION_1_0, **fields}
+    if "compatibility" in body:
+        body["compatibility"] = _canonical_compatibility(body["compatibility"])
     submitted_at = body.get("submittedAt")
     if isinstance(submitted_at, datetime) and submitted_at.tzinfo is not None:
         body["submittedAt"] = isoformat_utc(submitted_at.astimezone(UTC).replace(microsecond=0))

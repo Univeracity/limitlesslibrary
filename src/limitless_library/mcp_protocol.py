@@ -152,10 +152,13 @@ class McpToolDispatcher:
             if not isinstance(params, dict):
                 return jsonrpc_error(message_id, -32602, "initialize requires object params")
             requested = params["protocolVersion"]
+            # Initialization negotiates a supported era; a newer client can
+            # accept our stable version without us claiming newer semantics.
+            negotiated = requested if requested in INITIALIZATION_PROTOCOL_VERSIONS else STABLE_PROTOCOL_VERSION
             return jsonrpc_result(
                 message_id,
                 {
-                    "protocolVersion": requested,
+                    "protocolVersion": negotiated,
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": self.server_name, "version": self.server_version},
                     "instructions": self.instructions,
@@ -366,11 +369,11 @@ def _legacy_initialize_request_error(message: dict[str, Any]) -> dict[str, Any] 
     if not isinstance(params, dict):
         return jsonrpc_error(message_id, -32602, "initialize requires object params")
     requested = params.get("protocolVersion")
-    if requested not in INITIALIZATION_PROTOCOL_VERSIONS:
+    if not isinstance(requested, str) or not requested.strip():
         return jsonrpc_error(
             message_id,
             -32602,
-            "unsupported protocolVersion; expected one of " + ", ".join(INITIALIZATION_PROTOCOL_VERSIONS),
+            "initialize requires a non-empty protocolVersion string",
         )
     if not isinstance(params.get("capabilities"), dict):
         return jsonrpc_error(message_id, -32602, "initialize requires object client capabilities")

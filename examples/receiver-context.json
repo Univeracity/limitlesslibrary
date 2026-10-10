@@ -1,0 +1,23 @@
+{
+  "receiverId": "receiver:example-linux-agent",
+  "allowedUse": "general-reuse",
+  "interfaces": ["limitless.mcp/v1"],
+  "execution": {
+    "platform": "linux",
+    "architecture": "x86_64",
+    "runtime": "agent",
+    "version": "1.0.0"
+  },
+  "targets": [
+    {
+      "id": "target:example-linux-agent",
+      "platform": "linux",
+      "architecture": "x86_64",
+      "runtime": "agent",
+      "versionRange": "*",
+      "interfaces": ["limitless.mcp/v1"]
+    }
+  ],
+  "compatibilityMode": "all-targets",
+  "selectedTarget": null
+}

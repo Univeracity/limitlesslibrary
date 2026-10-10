@@ -55,21 +55,27 @@ limitless service-status
 limitless service-inspect
 ```
 
-An agent or integration can submit a complete bounded service-query record:
-
-```bash
-limitless service-query --request ./service-query.json
-```
-
-Or let the client bind the query envelope around an explicit objective and
-receiver context:
+Let the client bind a fresh query envelope around an explicit objective and
+the bundled receiver context, after adapting its facts to your actual receiver:
 
 ```bash
 limitless service-query \
   --request-id request:example-001 \
-  --objective "Add a reviewed clipboard history extension" \
-  --receiver ./receiver-context.json
+  --objective "Verify prior work with receiver-owned checks and observed adoption" \
+  --receiver ./examples/receiver-context.json
 ```
+
+The example describes an agent on Linux/x86_64. It declares `receiverId`,
+`allowedUse`, `interfaces`, `execution`, `targets`, `compatibilityMode`, and
+`selectedTarget`. It differs from the local query receiver's `constraints` and
+`toolchain`. Execution facts describe the host; target facts describe where the
+result must work. Keep those facts distinct when they differ. A malformed
+receiver fails locally with exit status 2 and an actionable message.
+
+The client fills the current timestamps, policy vocabulary, supported result
+version, and query digest. Advanced callers with an already-built current query
+can use `limitless service-query --request PATH`; no static, expiring query file
+is needed for the walkthrough. Live catalog results may include abstention.
 
 Baseline public access requires no user credential: the client automatically
 uses its pseudonymous installation session. A caller may still supply an
@@ -130,7 +136,9 @@ same invocation:
 
 ```bash
 limitless service-query \
-  --request ./service-query.json \
+  --request-id request:example-artifact-001 \
+  --objective "Find an exact component compatible with this receiver" \
+  --receiver ./examples/receiver-context.json \
   --artifact-output ./selected.bin
 ```
 
@@ -206,6 +214,20 @@ an immutable mode-0600 state file beside the draft. A retry reuses that intent
 and request identity, so an interrupted transfer cannot silently become another
 release.
 
+Method objects are strict JSON with `summary`, ordered `steps`, `constraints`,
+`evaluation`, and `limitations`. The client validates structure and canonical
+bytes before it signs a new intent or uploads. Object keys must be sorted,
+whitespace must be compact, and one final newline is allowed. Constraints and
+limitations may be empty; evaluation must contain at least one check. Nonempty
+text lists must be sorted and unique. Duplicate JSON keys are rejected.
+
+For a readable draft, run
+`limitless seal-method --draft ./my-method.json --output ./my-method.canonical.json`
+and name the new file in the publication draft. Sealing is local, creates an
+owner-only file, and refuses overwrite. Automatic method admission is bounded
+to 64 KiB. Auxiliary manifest and verification objects retain their own byte
+contracts. Existing signed state always binds its original bytes.
+
 The client sends the signed policy acceptance and intent as bounded JSON,
 receives a signed plan and short-lived content authorization, and streams only
 objects the plan says are missing.
@@ -231,9 +253,9 @@ generation. Older releases stay opaque rather than being retroactively
 classified from their bytes or provenance.
 
 The bundled example is directly publishable from a supported release after the
-publisher reviews and accepts the currently advertised policy digest. The open
-client validates the public wire lifecycle but does not
-contain the private admission engine, ranking service, or managed storage.
+publisher reviews and accepts the currently advertised policy digest. The client
+validates the public wire lifecycle. Admission, ranking, and managed storage are
+provided by the service.
 
 The returned owner-only state is also the durable handle for follow-up:
 
@@ -248,6 +270,42 @@ release, then signs a short-lived withdrawal with the current installation key.
 An already revoked release returns its existing state without creating another
 withdrawal request. Pending, quarantined, rejected, or retired work cannot be
 misrepresented as an active release eligible for withdrawal.
+
+Publication state prepared by an older client for multiple targets retains its
+original authenticated target order, digest, signature, and submission reference.
+It can resume without preparing a replacement operation. New builders choose
+canonical UTF-8 target order before signing; readers never reorder an existing
+signed record. The service may still require manual admission review for multiple
+targets. Compatibility does not turn pending intake into automatic admission.
+
+### MCP method contribution
+
+The generic Library MCP also offers `limitless_register_method` after an agent
+has checked useful original work. By default it records a canonical,
+source-free method in an owner-private local store and makes no service
+request. The registered method must describe the observed outcome and its
+applicability; this note is self-reported evidence, not verified receiver
+adoption. The server exposes no exact-source contribution tool.
+
+For standing public-method authorization, activate the service, inspect its
+signed `publicationPolicy`, review its policy URL, and configure the MCP server
+with both `--submit-methods-publicly` and
+`--public-method-policy-digest sha256:<reviewed digest>`. A registration then
+queues the existing signed `service-publish` lifecycle in a background process.
+The agent receives a stable `method:<sha256>` reference immediately. Public
+admission can remain pending, be rejected, or require owner attention; the tool
+does not report those as verified success.
+
+The default store is `$XDG_DATA_HOME/limitless-library/methods`, falling back to
+`~/.local/share/limitless-library/methods`. Each method folder is named by the
+64 hex characters after `method:`. It contains `capture.json`, `method.json`,
+and, when public sharing was authorized, `publication.json` plus
+`submission-status.json`. The signed `publication.json.state.json` appears
+after the first successful service preflight. The owner can use that state file
+with `service-publication-status` or `service-publication-revoke` as above.
+Changing the advertised policy requires a new owner review and MCP policy
+digest. Retry pending or failed submissions without another agent turn using
+`python -m limitless_library.method_capture --sync <method-store> --policy-digest sha256:<reviewed digest>`.
 
 ## Advanced alternate profiles
 
@@ -276,9 +334,10 @@ implementations.
 
 ## Deliberate exclusions
 
-Connecting does not publish work. Only `service-publish` transfers the exact
-objects named in its reviewed draft; it does not enumerate a workspace or
-upload a local catalog. The client also does not install a staged component,
+Connecting alone does not publish work. `service-publish` transfers the exact
+objects named in its reviewed draft; owner-authorized MCP method contribution
+uses that same bounded lifecycle. Neither path enumerates a workspace or
+uploads a local catalog. The client also does not install a staged component,
 hand off to a native provider, or submit local outcome evidence. Those remain
 separate owner-authorized continuations. The service-side identity authority,
 managed admission implementation, ranking, persistence, analytics, and

@@ -150,11 +150,12 @@ def _search_terms(value: str) -> set[str]:
 
 
 def _objective_score(capsule: dict[str, Any], offer: dict[str, Any], objective: str) -> int:
-    """Return a conservative lexical tie-break score for one eligible offer.
+    """Return a conservative lexical relevance score for one eligible offer.
 
     Eligibility, rights, compatibility, and explicit priority remain controlling.
-    Objective text is used only when otherwise-equal eligible offers would force
-    an abstention, and only a unique positive match can break that tie.
+    An explicit objective requires a positive match, even for a sole candidate.
+    Only a unique positive match can break an otherwise-equal priority tie.
+    This lexical check does not establish semantic suitability for the task.
     """
 
     query = _search_terms(objective)
@@ -234,14 +235,14 @@ class LocalCatalog:
         if candidates:
             top_priority = candidates[0][0]
             top = [candidate for candidate in candidates if candidate[0] == top_priority]
-            if len(top) == 1:
+            if len(top) == 1 and not isinstance(request.get("objective"), str):
                 selected_candidate = top[0]
             elif isinstance(request.get("objective"), str):
                 ranked = sorted(
                     ((_objective_score(item[3].record, item[4], request["objective"]), item) for item in top),
                     key=lambda item: (-item[0], item[1][1], item[1][2]),
                 )
-                if ranked[0][0] > 0 and ranked[0][0] > ranked[1][0]:
+                if ranked[0][0] > 0 and (len(ranked) == 1 or ranked[0][0] > ranked[1][0]):
                     selected_candidate = ranked[0][1]
         selected: dict[str, Any] | None = None
         if selected_candidate is not None:

@@ -225,8 +225,9 @@ def _sorted_texts(
     maximum_items: int,
     maximum_length: int,
     allowed: Iterable[str] | None = None,
+    allow_empty: bool = False,
 ) -> list[str]:
-    if not isinstance(value, list) or not value or len(value) > maximum_items:
+    if not isinstance(value, list) or (not value and not allow_empty) or len(value) > maximum_items:
         raise PublicServiceContractError(f"{field} is invalid")
     result = [_text(item, field, maximum=maximum_length) for item in value]
     if result != sorted(set(result)):
@@ -970,7 +971,7 @@ def _method(value: Any) -> dict[str, Any]:
     checked_steps: list[dict[str, str]] = []
     for index, step in enumerate(steps, start=1):
         current = _exact(step, {"index", "instruction", "check", "expected"}, "source-free method step")
-        if current["index"] != index:
+        if type(current["index"]) is not int or current["index"] != index:
             raise PublicServiceContractError("source-free method step indexes are invalid")
         checked_steps.append(
             {
@@ -983,10 +984,16 @@ def _method(value: Any) -> dict[str, Any]:
     return {
         "summary": _text(item["summary"], "source-free method summary", maximum=400),
         "steps": checked_steps,
-        "constraints": _sorted_texts(item["constraints"], "source-free method constraints", maximum_items=16, maximum_length=240),
+        "constraints": _sorted_texts(item["constraints"], "source-free method constraints", maximum_items=16, maximum_length=240, allow_empty=True),
         "evaluation": _sorted_texts(item["evaluation"], "source-free method evaluation", maximum_items=16, maximum_length=240),
-        "limitations": _sorted_texts(item["limitations"], "source-free method limitations", maximum_items=16, maximum_length=240),
+        "limitations": _sorted_texts(item["limitations"], "source-free method limitations", maximum_items=16, maximum_length=240, allow_empty=True),
     }
+
+
+def validate_source_free_method(value: Any) -> dict[str, Any]:
+    """Validate method authoring and returned methods against the same contract."""
+
+    return _method(value)
 
 
 def _artifact_delivery_1_5(

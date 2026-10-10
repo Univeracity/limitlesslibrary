@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from limitless_library import __version__
 from limitless_library.contracts import (
     canonical_json_bytes,
     load_json,
@@ -857,6 +858,24 @@ def test_query_builder_emits_only_the_current_public_policy_vocabulary() -> None
     assert "exchange" not in canonical_json_bytes(query).decode("utf-8")
 
 
+def test_query_builder_rejects_malformed_receiver_before_discovery() -> None:
+    corpus = load_json(CORPUS)
+    transport = MemoryTransport(corpus)
+    connector = ServiceConnector(_profile(corpus), transport=transport, clock=lambda: AT)
+    with pytest.raises(ServiceConnectorError, match="receiverContext"):
+        connector.build_query(request_id="request:invalid-receiver", objective="Verify prior work",
+                              receiver_context={"constraints": [], "toolchain": {}})
+    assert transport.calls == []
+
+
+def test_query_builder_normalizes_other_contract_errors() -> None:
+    corpus = load_json(CORPUS)
+    connector = ServiceConnector(_profile(corpus), transport=MemoryTransport(corpus), clock=lambda: AT)
+    with pytest.raises(ServiceConnectorError, match="invalid service query: service query ttl"):
+        connector.build_query(request_id="request:invalid-ttl", objective="Verify prior work",
+                              receiver_context=corpus["query"]["receiverContext"], ttl_seconds=0)
+
+
 def test_query_builder_negotiates_current_result_from_current_discovery() -> None:
     corpus = load_json(CORPUS)
     root_signer = InstallationSigner.generate()
@@ -1139,7 +1158,7 @@ def test_signed_artifact_is_fetched_with_header_authority_and_staged_without_sec
             "headers": {
                 "accept": "application/octet-stream",
                 "authorization": "Bearer test-access-token-value",
-                "user-agent": "limitless-library/0.1.0a0",
+                "user-agent": f"limitless-library/{__version__}",
                 "Limitless-Capability": result["selection"]["immutable"]["authorization"]["value"],
             },
             "body": None,

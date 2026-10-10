@@ -13,8 +13,9 @@ by `tests/`:
 - exact installed byte equality and rollback after failed verification;
 - receiver-runtime invocation plus receiver-owned functional obligations;
 - immutable, content-bound adoption evidence;
-- MCP 2026 discovery, read-only tool metadata, structured decisions, request
-  binding, protocol rejection, response size limits, and deadlines;
+- MCP 2026 discovery, query read-only and method-registration tool metadata,
+  structured decisions, request binding, protocol rejection, response size
+  limits, and deadlines;
 - MCP 2025-06-18 and 2025-03-26 initialization, notification admission, and
   stdio lifecycle coverage.
 
