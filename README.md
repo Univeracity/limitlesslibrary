@@ -14,7 +14,7 @@
   <a href="https://github.com/Univeracity/limitlesslibrary/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/Univeracity/limitlesslibrary/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Python 3.11 or newer" src="https://img.shields.io/badge/python-3.11%2B-111111">
   <a href="docs/PROTOCOL.md"><img alt="MCP 2026-07-28" src="https://img.shields.io/badge/MCP-2026--07--28-111111"></a>
-  <img alt="Preview" src="https://img.shields.io/badge/status-preview-6b7280">
+  <a href="https://github.com/Univeracity/limitlesslibrary/releases/tag/v0.1.0a1"><img alt="Alpha" src="https://img.shields.io/badge/status-alpha-6b7280"></a>
 </p>
 
 <p align="center">
@@ -66,7 +66,7 @@ locally.
 | --- | --- | --- |
 | [Local quick start](#quick-start) | Inspecting the complete lifecycle | Exact adoption, method guidance, and abstention with no account or hosted service |
 | [Public service](#connect-to-limitless-library-service) | Searching and contributing to the shared Library | Anonymous activation, high-signal discovery, signed results, and reviewed public intake |
-| [Verified Omarchy plugin](https://omarchyplugins.com/plugin.html?id=univeracity.limitless-library) | Omarchy users who want a native interface | A panel, bar widget, local catalog, agent connection, and optional service access |
+| [Omarchy plugin](https://github.com/Univeracity/limitless-omarchy) | Omarchy users who want a native interface | A panel, bar widget, local catalog, agent connection, and optional service access |
 
 ## Quick start
 
@@ -405,10 +405,11 @@ Outputs are immutable: both commands refuse to overwrite an existing path.
 
 ## Status and security
 
-This repository is an alpha package and the open-source foundation of a live
-preview. The complete local lifecycle works without an account or hosted
-service and remains single-operator. Contained exact verification currently
-requires Linux and Bubblewrap; querying and method selection do not.
+The current published release is [0.1.0a1 alpha](https://github.com/Univeracity/limitlesslibrary/releases/tag/v0.1.0a1).
+This repository is the open-source foundation of Limitless Library. The
+complete local lifecycle works without an account or hosted service and
+remains single-operator. Contained exact verification currently requires Linux
+and Bubblewrap; querying and method selection do not.
 
 The official public service is usable now for anonymous activation, discovery,
 signed decisions and results, exact-artifact staging, outcome evidence, and
