@@ -1,6 +1,18 @@
 # Changelog
 
-## 0.1.0a0 - unreleased
+## 0.1.0a1 - 2026-10-10
+
+- Published alpha packages and release checksums.
+- Compact source-free method capture and registration through MCP, with
+  owner-controlled sharing and resumable public publication.
+- Preservation of signed target ordering when verifying received objects;
+  canonical UTF-8 ordering for newly authored objects.
+- Actionable receiver-input errors, corrected examples, and canonical method
+  preflight with immutable, no-overwrite outputs.
+- Agent initialization compatibility and updated service-connection and local
+  fallback documentation.
+
+## 0.1.0a0 - source-only alpha baseline
 
 - Initial sanitized local alpha.
 - Public capsule/query/decision/recipe/verifier/adoption schemas.

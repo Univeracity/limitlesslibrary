@@ -2,15 +2,15 @@
 
 ## Supported version
 
-Only the latest commit of the `0.1.0a0` pre-alpha is supported. There are no
-security stability guarantees yet.
+Security fixes target the current `0.1.0a1` alpha release and `main`. Alpha
+status does not provide security or interface stability guarantees.
 
 ## Reporting
 
 Do not disclose a suspected vulnerability in a public issue or discussion. Use
 the repository's [private security-advisory
 form](https://github.com/Univeracity/limitlesslibrary/security/advisories/new).
-If that form is unavailable during the pre-release transition, contact the
+If that form is unavailable, contact the
 repository owner through a previously established private channel.
 
 Include the affected version or commit, operating system, expected behavior,

@@ -44,8 +44,8 @@ policy, and protocol boundaries.
 
 ## Alpha scope
 
-This release supports a single operator and a local catalog, plus an optional
-client that verifies a release-pinned or explicitly configured service's
+The `0.1.0a1` alpha supports a single operator and a local catalog, plus an
+optional client that verifies a release-pinned or explicitly configured service's
 public authority. The client holds a pseudonymous publisher key locally and
 can explicitly contribute selected public objects through signed, inspectable
 contracts. It does not implement the managed identity authority, multi-party
