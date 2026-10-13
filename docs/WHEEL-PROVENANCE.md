@@ -49,7 +49,7 @@ can also be verified offline with GitHub CLI's `--bundle` option.
 
 ## Reproduce locally
 
-Use Python 3.12 with `pip==26.2.1`, `build==1.5.0`, `setuptools==83.0.0`, and
+Use Python 3.12.3 with `pip==26.2.1`, `build==1.5.0`, `setuptools==83.0.0`, and
 `wheel==0.48.0`. Keep the build tooling checkout separate from a detached checkout
 of the historical source commit, then run:
 

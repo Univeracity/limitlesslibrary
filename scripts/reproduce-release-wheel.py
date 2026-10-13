@@ -62,7 +62,7 @@ def reproduce(source_root: Path, recipe_path: Path, output: Path) -> dict[str, o
     if not re.fullmatch(r"[0-9a-f]{64}", expected_digest):
         raise ValueError("wheel SHA256 must be a full digest")
     tools = recipe["tools"]
-    if f"{sys.version_info.major}.{sys.version_info.minor}" != tools["python"]:
+    if platform.python_version() != tools["python"]:
         raise ValueError("Python version does not match the build recipe")
     for name, version in tools.items():
         if name != "python" and importlib.metadata.version(name) != version:

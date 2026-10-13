@@ -39,7 +39,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.3"
       - name: Install exact build tools
         run: python -m pip install pip==26.2.1 build==1.5.0 setuptools==83.0.0 wheel==0.48.0
       - name: Rebuild twice and compare all delivered package files
