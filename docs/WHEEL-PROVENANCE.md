@@ -7,7 +7,7 @@ Its package sources are public at commit
 [`b9249e8de3e2cf558b70719dcd6e7a2ec44dd352`](https://github.com/Univeracity/limitlesslibrary/tree/b9249e8de3e2cf558b70719dcd6e7a2ec44dd352/src/limitless_library).
 
 [The build recipe](releases/0.1.0a1-wheel.json) records the source commit,
-its timestamp, the exact wheel digest, and the pinned build tools.
+its timestamp, the exact wheel digest, the build umask, and the pinned build tools.
 The [source evidence workflow](../.github/workflows/wheel-provenance.yml):
 
 1. Checks out that exact public source commit and verifies its identity.
@@ -49,8 +49,11 @@ can also be verified offline with GitHub CLI's `--bundle` option.
 
 ## Reproduce locally
 
-Use Python 3.12.3 with `pip==26.2.1`, `build==1.5.0`, `setuptools==83.0.0`, and
-`wheel==0.48.0`. Keep the build tooling checkout separate from a detached checkout
+Use Python 3.12.3 on Linux with `pip==26.2.1`, `build==1.5.0`,
+`setuptools==83.0.0`, `wheel==0.48.0`, `packaging==26.3`, and
+`pyproject_hooks==1.3.3`. The helper sets the recipe's `0002` umask for the build
+subprocess; wheel file permissions are part of the complete artifact digest.
+Keep the build tooling checkout separate from a detached checkout
 of the historical source commit, then run:
 
 ```sh

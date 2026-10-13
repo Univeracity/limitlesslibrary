@@ -9,11 +9,14 @@
     "name": "limitless_library-0.1.0a1-py3-none-any.whl",
     "sha256": "1f776299c684e1b52430585b640917a37ca88eac9ef0db0414ad0e18e8094986"
   },
+  "buildUmask": "0002",
   "tools": {
     "python": "3.12.3",
     "pip": "26.2.1",
     "build": "1.5.0",
     "setuptools": "83.0.0",
-    "wheel": "0.48.0"
+    "wheel": "0.48.0",
+    "packaging": "26.3",
+    "pyproject_hooks": "1.3.3"
   }
 }

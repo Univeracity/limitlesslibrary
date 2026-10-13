@@ -61,6 +61,9 @@ def reproduce(source_root: Path, recipe_path: Path, output: Path) -> dict[str, o
         raise ValueError("wheel name must be a plain wheel filename")
     if not re.fullmatch(r"[0-9a-f]{64}", expected_digest):
         raise ValueError("wheel SHA256 must be a full digest")
+    build_umask = recipe["buildUmask"]
+    if not isinstance(build_umask, str) or not re.fullmatch(r"0[0-7]{3}", build_umask):
+        raise ValueError("build umask must be an octal permission mask")
     tools = recipe["tools"]
     if platform.python_version() != tools["python"]:
         raise ValueError("Python version does not match the build recipe")
@@ -90,6 +93,7 @@ def reproduce(source_root: Path, recipe_path: Path, output: Path) -> dict[str, o
                 [sys.executable, "-m", "build", "--wheel", "--no-isolation", "--outdir", str(dist)],
                 cwd=root,
                 env=env,
+                umask=int(build_umask, 8),
                 check=True,
             )
             wheels = list(dist.glob("*.whl"))
@@ -108,6 +112,7 @@ def reproduce(source_root: Path, recipe_path: Path, output: Path) -> dict[str, o
         "schemaVersion": "limitless.release-wheel-proof/1",
         "source": {**recipe["source"], "tree": tree, "archiveSha256": hashlib.sha256(archive).hexdigest()},
         "wheel": recipe["wheel"],
+        "buildUmask": build_umask,
         "tools": {**tools, "pythonFullVersion": platform.python_version()},
         "builds": results,
         "packageFiles": package_files,
