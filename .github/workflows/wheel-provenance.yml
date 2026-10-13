@@ -1,0 +1,98 @@
+name: Release wheel source evidence
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/wheel-provenance.yml
+      - scripts/reproduce-release-wheel.py
+      - tests/test_release_wheel_provenance.py
+      - docs/releases/0.1.0a1-wheel.json
+      - docs/WHEEL-PROVENANCE.md
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/wheel-provenance.yml
+      - scripts/reproduce-release-wheel.py
+      - tests/test_release_wheel_provenance.py
+      - docs/releases/0.1.0a1-wheel.json
+      - docs/WHEEL-PROVENANCE.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    name: Reproduce the exact released core wheel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: tooling
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Univeracity/limitlesslibrary
+          ref: b9249e8de3e2cf558b70719dcd6e7a2ec44dd352
+          path: release-source
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install exact build tools
+        run: python -m pip install pip==26.2.1 build==1.5.0 setuptools==83.0.0 wheel==0.48.0
+      - name: Rebuild twice and compare all delivered package files
+        run: |
+          python tooling/scripts/reproduce-release-wheel.py \
+            --source-root release-source \
+            --recipe tooling/docs/releases/0.1.0a1-wheel.json \
+            --output proof
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: core-wheel-reproduction
+          path: proof/*
+          if-no-files-found: error
+          retention-days: 90
+
+  attest:
+    name: Sign and verify the exact source-to-wheel evidence
+    needs: reproduce
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: core-wheel-reproduction
+          path: proof
+      - name: Attest the rebuilt wheel with its exact source and build recipe
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: proof/limitless_library-0.1.0a1-py3-none-any.whl
+          predicate-type: https://github.com/Univeracity/limitlesslibrary/releases/wheel-build/v1
+          predicate-path: proof/wheel-build.json
+      - name: Verify the signed evidence with GitHub CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          gh attestation verify proof/limitless_library-0.1.0a1-py3-none-any.whl \
+            --repo "$GH_REPO" \
+            --signer-workflow "$GH_REPO/.github/workflows/wheel-provenance.yml" \
+            --predicate-type https://github.com/Univeracity/limitlesslibrary/releases/wheel-build/v1 \
+            --format json > proof/verification.json
+          cp "$ATTESTATION_BUNDLE" proof/wheel-build.sigstore.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: attested-core-wheel
+          path: proof/*
+          if-no-files-found: error
+          retention-days: 90

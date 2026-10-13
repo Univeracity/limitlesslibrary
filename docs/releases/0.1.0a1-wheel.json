@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "limitless.release-wheel-build/1",
+  "source": {
+    "repository": "https://github.com/Univeracity/limitlesslibrary",
+    "commit": "b9249e8de3e2cf558b70719dcd6e7a2ec44dd352",
+    "sourceDateEpoch": 1791523652
+  },
+  "wheel": {
+    "name": "limitless_library-0.1.0a1-py3-none-any.whl",
+    "sha256": "1f776299c684e1b52430585b640917a37ca88eac9ef0db0414ad0e18e8094986"
+  },
+  "tools": {
+    "python": "3.12",
+    "pip": "26.2.1",
+    "build": "1.5.0",
+    "setuptools": "83.0.0",
+    "wheel": "0.48.0"
+  }
+}

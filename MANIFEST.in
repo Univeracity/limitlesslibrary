@@ -6,4 +6,5 @@ include src/limitless_library/py.typed
 recursive-include examples *.json *.py *.md
 recursive-include docs *.md *.png
 recursive-include docs *.svg
-include scripts/limitless scripts/verify-source-quickstart.py
+include scripts/limitless scripts/verify-source-quickstart.py scripts/reproduce-release-wheel.py
+recursive-include docs/releases *.json

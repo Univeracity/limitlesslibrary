@@ -400,6 +400,7 @@ Outputs are immutable: both commands refuse to overwrite an existing path.
 | [Managed-service connector](docs/MANAGED-SERVICE.md) | Explicit endpoint, trust, policy, and query boundary |
 | [Trust model](docs/TRUST-MODEL.md) | Security boundaries and failure behavior |
 | [Conformance](docs/CONFORMANCE.md) | Required outcomes and fixture expectations |
+| [Release wheel source evidence](docs/WHEEL-PROVENANCE.md) | Reproduce and authenticate the distributed core wheel |
 | [Open-source foundation](docs/OPEN-SOURCE-FOUNDATION.md) | Relationship between the open implementation and product |
 | [Examples](examples/README.md) | Primitive-by-primitive walkthrough |
 
