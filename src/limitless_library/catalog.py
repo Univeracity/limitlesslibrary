@@ -176,6 +176,55 @@ def _objective_score(capsule: dict[str, Any], offer: dict[str, Any], objective: 
     return 5 * len(query & title) + 3 * len(query & summary) + len(query & details)
 
 
+_OBJECTIVE_ACTION_WORDS = frozenset(
+    {
+        "check",
+        "checks",
+        "verify",
+        "verification",
+        "fix",
+        "update",
+        "change",
+        "install",
+        "installation",
+        "work",
+        "task",
+        "steps",
+        "test",
+        "tests",
+        "current",
+        "result",
+        "results",
+        "before",
+        "after",
+        "failed",
+        "failure",
+        "success",
+        "using",
+        "make",
+        "add",
+        "remove",
+        "build",
+        "ensure",
+        "run",
+        "running",
+    }
+)
+
+
+def _objective_fit_score(capsule: dict[str, Any], offer: dict[str, Any], objective: str) -> int:
+    """New route: match descriptive topics, not incidental verification text."""
+    query = _search_terms(objective) - _OBJECTIVE_ACTION_WORDS
+    title = _search_terms(capsule["title"]) - _OBJECTIVE_ACTION_WORDS
+    method = offer.get("method")
+    summary = _search_terms(method["summary"]) - _OBJECTIVE_ACTION_WORDS if isinstance(method, dict) else set()
+    title_matches = query & title
+    summary_matches = query & summary
+    if not title_matches and len(summary_matches) < 2:
+        return 0
+    return 5 * len(title_matches) + 3 * len(summary_matches)
+
+
 class LocalCatalog:
     """An immutable-on-load catalog of independently redistributable capsules."""
 
@@ -200,6 +249,14 @@ class LocalCatalog:
         if not capsules:
             raise CatalogError("catalog contains no capsule.json manifests")
         self._set_capsules(capsules)
+
+    @classmethod
+    def empty(cls, root: Path) -> LocalCatalog:
+        """An explicitly empty local source; no executable roots are available."""
+        catalog = object.__new__(cls)
+        catalog.root = Path(root).absolute()
+        catalog._set_capsules([])
+        return catalog
 
     def _set_capsules(self, capsules: list[_Capsule]) -> None:
         identities: set[tuple[str, str]] = set()
@@ -239,6 +296,93 @@ class LocalCatalog:
         combined.root = self.root
         combined._set_capsules(capsules)
         return combined
+
+    def query_objective(
+        self,
+        objective: str,
+        *,
+        receiver: dict[str, Any],
+        requested_uses: tuple[str, ...],
+        tenant_scopes: tuple[str, ...],
+        evaluated_at: str,
+        allow_exact: bool = False,
+    ) -> dict[str, Any] | None:
+        """Select one relevant eligible offer across task kinds for the new route.
+
+        The structured query's priority-first behavior remains unchanged. This
+        route filters irrelevant offers before priority and requires a unique
+        best match. A concrete original-format request and decision bind the
+        chosen offer, so the existing receiver verification path can inspect it.
+        """
+        for values, maximum in ((requested_uses, 8), (tenant_scopes, 4)):
+            if (
+                not isinstance(values, tuple)
+                or not 1 <= len(values) <= maximum
+                or any(not isinstance(value, str) or not 1 <= len(value) <= 200 for value in values)
+                or len(set(values)) != len(values)
+            ):
+                raise CatalogError("objective query uses and scopes must be bounded unique text tuples")
+        if not isinstance(allow_exact, bool):
+            raise CatalogError("objective exact-selection flag must be boolean")
+        probe = {
+            "schemaVersion": "limitless.query/0.1",
+            "objective": objective,
+            "taskKind": "general-work",
+            "receiver": receiver,
+            "requestedUse": requested_uses[0] if requested_uses else "",
+            "tenantScope": tenant_scopes[0] if tenant_scopes else "",
+            "evaluatedAt": evaluated_at,
+        }
+        try:
+            validate(probe, "query-0.1.schema.json", "query")
+            parse_utc(evaluated_at, "evaluatedAt")
+        except (SchemaError, ContractError) as error:
+            raise CatalogError(str(error)) from error
+        candidates = []
+        for capsule in self._capsules:
+            for offer in capsule.record["offers"]:
+                if offer["kind"] == "exact-component" and not allow_exact:
+                    continue
+                request = None
+                for scope in tenant_scopes:
+                    for use in requested_uses:
+                        current = {**probe, "taskKind": offer["taskKind"], "requestedUse": use, "tenantScope": scope}
+                        if _matches(offer, current):
+                            request = current
+                            break
+                    if request is not None:
+                        break
+                if request is None:
+                    continue
+                score = _objective_fit_score(capsule.record, offer, objective)
+                if score > 0:
+                    candidates.append((score, offer["priority"], capsule, offer, request))
+        candidates.sort(key=lambda row: (-row[0], -row[1], row[2].record["id"], row[3]["id"]))
+        if not candidates or (len(candidates) > 1 and candidates[0][:2] == candidates[1][:2]):
+            return None
+        _, _, source, offer, request = candidates[0]
+        selected = {
+            "capsule": {
+                "id": source.record["id"],
+                "version": source.record["version"],
+                "digest": source.record["capsuleDigest"],
+                "license": source.record["license"],
+            },
+            "offer": _public_offer(offer),
+        }
+        exact = offer["kind"] == "exact-component"
+        decision = {
+            "schemaVersion": "limitless.decision/0.1",
+            "decision": "reuse" if exact else "instantiate",
+            "treatment": "exact-adoption" if exact else "method-guided",
+            "requestDigest": sha256_json(request),
+            "catalogDigest": self.catalog_digest,
+            "selected": selected,
+            "reason": "eligible-offer",
+        }
+        decision["decisionDigest"] = sha256_json(decision)
+        self.validate_decision(decision, request=request)
+        return {"request": request, "decision": decision, "title": source.record["title"]}
 
     def query(self, request: dict[str, Any]) -> dict[str, Any]:
         """Return one exact offer, one method, or non-disclosing abstention."""

@@ -89,6 +89,13 @@ private cache scope.
 
 ## Managed-service façade
 
+The additive objective interface uses `objective-query-1.0.schema.json`,
+`objective-result-1.0.schema.json`, and the separate owner
+`query-policy-1.0.schema.json`. Its tool accepts only a bounded objective. It
+builds existing local requests or current signed service requests internally;
+it does not redefine their wire formats. See [objective queries](OBJECTIVE-QUERIES.md)
+for result integrity, coverage, local continuation, and receiver configuration.
+
 The optional service connector uses the versioned public records implemented
 in `limitless_library.service_contracts`:
 

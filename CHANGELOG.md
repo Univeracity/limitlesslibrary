@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an objective-only MCP/CLI query route with a separate saved service-search
+  policy, host-owned receiver configuration, visible search coverage, and private
+  continuations. Existing structured tools and signed service contracts remain
+  usable. Queries never fetch or execute components.
+
 - Captured source-free methods are immediately searchable through MCP without
   rewriting existing records or the configured catalog. Checks, applicability,
   and limits remain in the guidance; repeated observations are consolidated

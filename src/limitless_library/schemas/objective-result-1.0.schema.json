@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://limitlesslibrary.com/schema/objective-result-1.0.json",
+  "title": "One objective treatment",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "queryRef", "objectiveDigest", "policyDigest", "receiverDigest", "treatment", "origin", "selection", "nextAction", "assurance", "coverage", "reason", "resultDigest"],
+  "properties": {
+    "schemaVersion": {"const": "limitless.objective-result/1.0"},
+    "queryRef": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^query:[0-9a-f]{32}$"}]},
+    "objectiveDigest": {"$ref": "#/$defs/digest"}, "policyDigest": {"$ref": "#/$defs/digest"},
+    "receiverDigest": {"$ref": "#/$defs/digest"}, "resultDigest": {"$ref": "#/$defs/digest"},
+    "treatment": {"enum": ["exact-component", "source-free-method", "abstain"]},
+    "origin": {"enum": ["local", "service", null]},
+    "selection": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/selection"}]},
+    "nextAction": {"enum": ["apply-method-and-check", "verify-before-adoption", "start-fresh"]},
+    "reason": {"enum": ["matched-local", "matched-service", "no-safe-selection", "service-unavailable", "service-verification-failed", "query-policy-changed", "result-too-large"]},
+    "assurance": {"type": "object", "additionalProperties": false, "required": ["selectionIntegrity", "outcome"], "properties": {"selectionIntegrity": {"enum": ["local-digest", "service-signature", "not-applicable"]}, "outcome": {"const": "not-asserted"}}},
+    "coverage": {"type": "object", "additionalProperties": false, "required": ["local", "service", "continuation"], "properties": {"local": {"enum": ["complete", "partial"]}, "service": {"enum": ["disabled", "not-needed", "complete", "unavailable", "verification-failed", "policy-attention"]}, "continuation": {"enum": ["available", "unavailable"]}}}
+  },
+  "allOf": [
+    {"if": {"properties": {"treatment": {"const": "abstain"}}}, "then": {"properties": {"origin": {"type": "null"}, "selection": {"type": "null"}, "nextAction": {"const": "start-fresh"}}}},
+    {"if": {"properties": {"treatment": {"const": "source-free-method"}}}, "then": {"properties": {"origin": {"type": "string"}, "selection": {"type": "object", "properties": {"method": {"type": "object"}}}, "nextAction": {"const": "apply-method-and-check"}}}},
+    {"if": {"properties": {"treatment": {"const": "exact-component"}}}, "then": {"properties": {"origin": {"type": "string"}, "selection": {"type": "object", "properties": {"method": {"type": "null"}}}, "nextAction": {"const": "verify-before-adoption"}}}}
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "selection": {"type": "object", "additionalProperties": false, "required": ["reference", "version", "digest", "title", "license", "method"], "properties": {
+      "reference": {"type": "string", "minLength": 1, "maxLength": 200}, "version": {"type": ["string", "null"], "minLength": 1, "maxLength": 80}, "digest": {"$ref": "#/$defs/digest"}, "title": {"type": "string", "minLength": 1, "maxLength": 200}, "license": {"type": "string", "minLength": 1, "maxLength": 100},
+      "method": {"oneOf": [{"type": "null"}, {"type": "object", "additionalProperties": false, "required": ["summary", "steps", "verification"], "properties": {"summary": {"type": "string", "minLength": 1, "maxLength": 2000}, "steps": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string", "minLength": 1, "maxLength": 2000}}, "verification": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string", "minLength": 1, "maxLength": 2000}}}}]}
+    }}
+  }
+}

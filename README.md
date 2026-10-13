@@ -196,13 +196,14 @@ the [conformance example](examples/README.md).
 
 ## MCP
 
-Start the bounded local stdio server:
+Start the bounded local stdio server; a seed catalog is optional:
 
 ```bash
 limitless-mcp --catalog examples/catalog
 ```
 
-It exposes `limitless_query_before_work` and `limitless_register_method` and supports stateless MCP
+It exposes `limitless_check`, `limitless_query_before_work`, and
+`limitless_register_method`, and supports stateless MCP
 `2026-07-28` requests plus the `2025-06-18` and legacy `2025-03-26`
 initialization flows. Initialization-era clients complete `initialize` and
 `notifications/initialized` before requesting a tool. Agents query before
@@ -216,6 +217,24 @@ returns the same method reference. A registration does not assert that the
 service has verified the method or accepted it into its catalog. Query results
 remain a decision channel, not an artifact transport; installation remains an
 explicit receiver-local operation.
+
+For ordinary agent work, call `limitless_check` with only the concise objective.
+It searches across task kinds and returns one method, an explicitly eligible
+component, or “start fresh.” The original structured query tool remains available.
+You can also use `limitless check --objective "Verify observed adoption"` without
+a seed catalog; it searches your private captured methods.
+
+Objective queries stay local until you explicitly enable service search:
+
+```bash
+limitless service-activate
+limitless query-policy --execution-mode service
+```
+
+Return to local queries with `limitless query-policy --execution-mode local`.
+This separate policy is reloaded on each query and does not authorize publication.
+The [objective-query guide](docs/OBJECTIVE-QUERIES.md) explains receiver selection,
+exact-component opt-in, private continuation records, and advanced configuration.
 
 Captured methods become available to the same MCP query immediately. Their
 private store stays separate from the configured catalog, and existing capture

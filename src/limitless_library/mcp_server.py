@@ -26,11 +26,14 @@ from .method_capture import (
     register_method,
     schedule_submission,
 )
+from .objective_query import ObjectiveQueryEngine, ObjectiveQueryError
+from .query_policy import QueryPolicyError
 from .schemas import load_schema
 
 SERVER_NAME = "limitless-library"
 TOOL_NAME = "limitless_query_before_work"
 REGISTER_METHOD_TOOL_NAME = "limitless_register_method"
+OBJECTIVE_TOOL_NAME = "limitless_check"
 MAX_REQUEST_BYTES = 1024 * 1024
 SERVER_INSTRUCTIONS = "Query before material work; locally verify any selected bytes before adoption."
 METHOD_INSTRUCTIONS = (
@@ -39,6 +42,22 @@ METHOD_INSTRUCTIONS = (
     "keep private paths and secrets out, and do not turn copied source into a method. Registration is local "
     "unless this MCP installation has explicit standing public-method authorization."
 )
+OBJECTIVE_INSTRUCTIONS = (
+    " Prefer limitless_check with the concise objective already in context. The owner configures the actual "
+    "receiver and whether public service search is permitted; do not supply paths, credentials, or policy. "
+    "Returned methods are guidance to apply freshly and check, not proof of success or permission to execute."
+)
+
+
+def objective_tool(*, service_queries: bool = False) -> dict[str, Any]:
+    return {
+        "name": OBJECTIVE_TOOL_NAME,
+        "title": "Check before work",
+        "description": "Find one reusable method or approved component for a concise objective, or safely start fresh.",
+        "inputSchema": load_schema("objective-query-1.0.schema.json"),
+        "outputSchema": load_schema("objective-result-1.0.schema.json"),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": service_queries},
+    }
 
 
 def _tool() -> dict[str, Any]:
@@ -143,11 +162,22 @@ def handle_message(registry: LocalCatalog, message: dict[str, Any]) -> dict[str,
 
 
 def _dispatcher(
-    registry: LocalCatalog, *, method_store: Path | None = None, public_method_policy_digest: str | None = None
+    registry: LocalCatalog,
+    *,
+    method_store: Path | None = None,
+    public_method_policy_digest: str | None = None,
+    objective_engine: ObjectiveQueryEngine | None = None,
 ) -> McpToolDispatcher:
-    captured_catalog = CapturedMethodCatalog(registry, method_store)
+    captured_catalog = (
+        objective_engine.catalog if objective_engine is not None else CapturedMethodCatalog(registry, method_store)
+    )
 
     def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if name == OBJECTIVE_TOOL_NAME and objective_engine is not None:
+            try:
+                return objective_engine.check(arguments)
+            except (ObjectiveQueryError, QueryPolicyError, OSError) as error:
+                raise McpToolCallError(str(error)) from error
         if name == TOOL_NAME:
             try:
                 return captured_catalog.query(arguments)
@@ -160,13 +190,18 @@ def _dispatcher(
                 raise McpToolCallError(str(error)) from error
         raise McpToolCallError("tool is not available")
 
+    tools = [_tool()]
+    if objective_engine is not None:
+        tools.append(objective_tool(service_queries=True))
+    if method_store is not None:
+        tools.append(_register_method_tool(public_submission=public_method_policy_digest is not None))
     return LibraryToolDispatcher(
         server_name=SERVER_NAME,
         server_version=__version__,
-        instructions=SERVER_INSTRUCTIONS + (METHOD_INSTRUCTIONS if method_store is not None else ""),
-        tools=[_tool(), _register_method_tool(public_submission=public_method_policy_digest is not None)]
-        if method_store is not None
-        else [_tool()],
+        instructions=SERVER_INSTRUCTIONS
+        + (OBJECTIVE_INSTRUCTIONS if objective_engine is not None else "")
+        + (METHOD_INSTRUCTIONS if method_store is not None else ""),
+        tools=tools,
         call_tool=call_tool,
         cache_scope="private",
     )
@@ -190,8 +225,10 @@ def _bounded_lines(stream: Any) -> Iterator[tuple[str | None, str | None]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--catalog", required=True, type=Path)
+    parser.add_argument("--catalog", type=Path, help="configured local capsule catalog; optional for private methods")
     parser.add_argument("--method-store", type=Path, help="private local method store (defaults to XDG data home)")
+    parser.add_argument("--query-policy", type=Path, help="separate owner policy for objective/service queries")
+    parser.add_argument("--query-state", type=Path, help="private query continuations; never artifact installation")
     parser.add_argument(
         "--submit-methods-publicly",
         action="store_true",
@@ -213,22 +250,31 @@ def main() -> None:
     ):
         parser.error("public method policy digest must be sha256: followed by 64 lowercase hex characters")
     try:
-        catalog = LocalCatalog(args.catalog)
-    except CatalogError as error:
-        print(f"cannot load catalog: {error}", file=sys.stderr)
-        raise SystemExit(2) from error
-    try:
         method_store = args.method_store or default_method_store()
     except MethodCaptureError as error:
         if args.submit_methods_publicly:
             print(f"method capture is unavailable: {error}", file=sys.stderr)
             raise SystemExit(2) from error
         method_store = None
+    data_root = method_store.parent if method_store is not None else None
+    try:
+        catalog = (
+            LocalCatalog(args.catalog) if args.catalog is not None else LocalCatalog.empty(data_root or Path.cwd())
+        )
+    except CatalogError as error:
+        print(f"cannot load catalog: {error}", file=sys.stderr)
+        raise SystemExit(2) from error
+    objective_engine = ObjectiveQueryEngine(
+        CapturedMethodCatalog(catalog, method_store),
+        policy_path=args.query_policy or (data_root / "query-policy.json" if data_root is not None else None),
+        state_dir=args.query_state or (data_root / "queries" if data_root is not None else None),
+    )
     session = McpToolSession(
         _dispatcher(
             catalog,
             method_store=method_store,
             public_method_policy_digest=args.public_method_policy_digest,
+            objective_engine=objective_engine,
         )
     )
     if args.submit_methods_publicly and method_store.is_dir():

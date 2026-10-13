@@ -380,7 +380,7 @@ def test_current_connector_accepts_additional_tools(tmp_path: Path, monkeypatch:
         str(tmp_path / "methods"),
     ]
     with McpStdioConnector(command, environment={"PYTHONPATH": str(ROOT / "src")}) as connector:
-        assert len(connector._request("tools/list", {})["tools"]) == 2
+        assert len(connector._request("tools/list", {})["tools"]) == 3
         decision = connector.query(load_json(REQUEST))
     assert decision["decision"] == "reuse"
 

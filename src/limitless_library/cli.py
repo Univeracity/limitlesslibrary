@@ -18,7 +18,8 @@ from .catalog import CatalogError, LocalCatalog, seal_capsule
 from .contracts import ContractError, load_json, write_new_json
 from .demo import DemoError, format_demo, run_demo
 from .installer import AdoptionError, adopt_exact_component, seal_recipe, validate_recipe
-from .method_capture import MethodCaptureError, query_with_captured_methods
+from .method_capture import CapturedMethodCatalog, MethodCaptureError, default_method_store, query_with_captured_methods
+from .objective_query import ObjectiveQueryEngine, ObjectiveQueryError
 from .official_service import (
     activate_official_service,
     activated_service_connector,
@@ -32,6 +33,7 @@ from .publication import (
     revoke_publication,
     seal_publication_method,
 )
+from .query_policy import QueryPolicyError, load_query_policy, save_query_policy
 from .sandbox import containment_readiness
 from .service_connector import (
     ServiceConnector,
@@ -110,6 +112,26 @@ def _parser() -> argparse.ArgumentParser:
     )
     query.add_argument("--request", type=Path, required=True)
     query.add_argument("--output", type=Path)
+
+    check = subparsers.add_parser("check", help="check reusable work with only a concise objective")
+    check.add_argument("--objective", required=True)
+    check.add_argument("--catalog", type=Path)
+    check.add_argument("--method-store", type=Path)
+    check.add_argument("--query-policy", type=Path)
+    check.add_argument("--query-state", type=Path)
+    check.add_argument("--output", type=Path)
+
+    query_policy = subparsers.add_parser(
+        "query-policy", help="inspect or configure separate objective-query permission"
+    )
+    query_policy.add_argument("--path", type=Path)
+    query_policy.add_argument("--execution-mode", choices=["local", "service"])
+    query_policy.add_argument("--local-receiver", type=Path)
+    query_policy.add_argument("--service-receiver", type=Path)
+    query_policy.add_argument("--allow-exact", action="store_true")
+    query_policy.add_argument("--method-only", action="store_true")
+    query_policy.add_argument("--requested-use", action="append")
+    query_policy.add_argument("--tenant-scope", action="append")
 
     agent_connect = subparsers.add_parser(
         "agent-connect",
@@ -238,7 +260,45 @@ def _parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = _parser().parse_args()
     try:
-        if args.command == "demo":
+        if args.command == "check":
+            method_store = args.method_store or default_method_store()
+            catalog = (
+                LocalCatalog(args.catalog) if args.catalog is not None else LocalCatalog.empty(method_store.parent)
+            )
+            engine = ObjectiveQueryEngine(
+                CapturedMethodCatalog(catalog, method_store),
+                policy_path=args.query_policy or method_store.parent / "query-policy.json",
+                state_dir=args.query_state or method_store.parent / "queries",
+            )
+            result = engine.check({"objective": args.objective})
+            if args.output is not None:
+                write_new_json(args.output, result)
+            else:
+                _print(result)
+        elif args.command == "query-policy":
+            path = args.path or default_method_store().parent / "query-policy.json"
+            policy = load_query_policy(path)
+            changed = False
+            if args.execution_mode is not None:
+                policy["executionMode"] = args.execution_mode
+                changed = True
+            for argument, key in ((args.local_receiver, "localReceiver"), (args.service_receiver, "serviceReceiver")):
+                if argument is not None:
+                    policy[key] = load_json(argument)
+                    changed = True
+            if args.allow_exact and args.method_only:
+                raise QueryPolicyError("choose --allow-exact or --method-only")
+            if args.allow_exact or args.method_only:
+                policy["allowExact"] = args.allow_exact
+                changed = True
+            for values, key in ((args.requested_use, "requestedUses"), (args.tenant_scope, "tenantScopes")):
+                if values:
+                    policy[key] = list(dict.fromkeys(values))
+                    changed = True
+            if changed:
+                save_query_policy(path, policy)
+            _print({"schemaVersion": "limitless.query-policy-status/1.0", "saved": changed, "policy": policy})
+        elif args.command == "demo":
             result = run_demo(args.workspace)
             if args.format == "json":
                 _print(result)
@@ -383,6 +443,8 @@ def main() -> None:
         ContractError,
         DemoError,
         MethodCaptureError,
+        ObjectiveQueryError,
+        QueryPolicyError,
         PublicationError,
         ServiceConnectorError,
     ) as error:

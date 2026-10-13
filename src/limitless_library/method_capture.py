@@ -284,17 +284,41 @@ class CapturedMethodCatalog:
         self._fingerprint: tuple | None = None
         self._combined = catalog
 
-    def query(self, request: dict[str, Any]) -> dict[str, Any]:
-        original = self.catalog.query(request)
-        if self.store_path is None:
-            return original
-        try:
+    def _refresh(self) -> LocalCatalog:
+        if self.store_path is not None:
             fingerprint = _capture_fingerprint(self.store_path)
             if fingerprint != self._fingerprint:
                 methods = captured_method_capsules(self.store_path)
                 self._combined = self.catalog.with_method_capsules(methods)
                 self._fingerprint = fingerprint
-            decision = self._combined.query(request)
+        return self._combined
+
+    def query_objective(self, objective: str, **options: Any) -> tuple[dict[str, Any] | None, bool]:
+        """Return one match and whether the optional private store was complete."""
+        try:
+            match = self._refresh().query_objective(objective, **options)
+        except (MethodCaptureError, CatalogError):
+            return self.catalog.query_objective(objective, **options), False
+        if match is not None:
+            decision = {**match["decision"], "catalogDigest": self.catalog.catalog_digest}
+            decision.pop("decisionDigest")
+            decision["decisionDigest"] = sha256_json(decision)
+            try:
+                self.catalog.validate_decision(decision, request=match["request"])
+            except CatalogError:
+                pass  # Captured methods belong to the combined snapshot.
+            else:
+                # Existing exact adopters can validate this against the
+                # configured catalog without loading unrelated private methods.
+                match = {**match, "decision": decision}
+        return match, True
+
+    def query(self, request: dict[str, Any]) -> dict[str, Any]:
+        original = self.catalog.query(request)
+        if self.store_path is None:
+            return original
+        try:
+            decision = self._refresh().query(request)
         except (MethodCaptureError, CatalogError):
             # A damaged optional capture store must not disable a valid existing
             # catalog selection. No unvalidated capture is used in this path.
