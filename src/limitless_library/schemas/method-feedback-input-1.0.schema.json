@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private reuse outcome input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["queryRef", "status", "reasonCode", "note"],
+  "allOf": [
+    {"if": {"properties": {"status": {"const": "succeeded"}}}, "then": {"properties": {"reasonCode": {"enum": ["checks-passed", "other"]}}}, "else": {"properties": {"reasonCode": {"not": {"const": "checks-passed"}}}}}
+  ],
+  "properties": {
+    "queryRef": {"type": "string", "pattern": "^query:[0-9a-f]{32}$"},
+    "status": {"enum": ["succeeded", "failed", "blocked", "not-used"]},
+    "reasonCode": {"enum": ["checks-passed", "check-failed", "missing-capability", "adaptation-needed", "not-applicable", "other"]},
+    "note": {"type": "string", "maxLength": 400, "pattern": "^[^\u0000]*$"}
+  }
+}

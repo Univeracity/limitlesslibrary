@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private reuse outcome acknowledgement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "status", "feedbackRef", "assurance", "destination"],
+  "properties": {
+    "schemaVersion": {"const": "limitless.method-feedback-result/1.0"},
+    "status": {"enum": ["recorded", "duplicate"]},
+    "feedbackRef": {"type": "string", "pattern": "^feedback:[0-9a-f]{64}$"},
+    "assurance": {"const": "self-reported"},
+    "destination": {"const": "private"}
+  }
+}

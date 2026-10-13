@@ -114,3 +114,40 @@ than serving its previous selection. The default bound is 2,000 manifests.
 Its optional host writer lock is read-only and non-blocking. Owner receiver
 resolvers may add native facts for a dedicated local integration; explicit
 remote target configuration must take precedence over those host facts.
+
+## Shared draft registration
+
+Host integrations can call `method_drafts.register_draft` with an owner-selected
+draft policy and their catalog projection. It retains the original
+`limitless.local-method-draft/0.1` record format, immutable IDs, revision lineage,
+and registration result. Its default task kind is `general-work`; Omarchy adds
+its own compatibility declaration and existing sharing initializer.
+
+Registration is local. A destination in a draft is sharing intent, not proof of
+submission or publication. A host integration must separately authorize and
+implement sharing. The original canonical capture tool and its stored records
+remain supported alongside these compact drafts.
+
+## Reuse observations
+
+After actual use, `limitless_record_outcome` accepts the returned `queryRef`,
+a status (`succeeded`, `failed`, `blocked`, or `not-used`), a bounded reason
+code, and a short private note. A failed check or missing capability is useful
+information. Delivery alone is not success.
+
+The kernel resolves the selection and receiver digest from the immutable
+private continuation. The model cannot substitute another selection, choose a
+public destination, or set verified assurance. Identical reports are idempotent;
+changed outcomes become separate immutable observations. An abstention or
+damaged continuation cannot be reported as a selected success.
+
+Records live in the sibling `method-feedback` directory, capped at 2,000
+16 KiB private records. Feedback does not alter capture/publication state or
+send anything to the service. `assurance: self-reported` is deliberately
+distinct from checked receiver evidence; validated JSON or a digest is not
+proof that a check occurred. An owner may use `limitless record-outcome` with
+an owner-private input JSON file and the corresponding `--query-state`.
+
+Publisher feedback and independently checked receiver outcomes still require
+separate qualification and authorization; these private reports do not grant
+either.

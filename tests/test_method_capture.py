@@ -13,7 +13,13 @@ import pytest
 from limitless_library.catalog import CatalogError, LocalCatalog
 from limitless_library.contracts import canonical_json_bytes, load_json, sha256_json
 from limitless_library.mcp_protocol import modern_metadata
-from limitless_library.mcp_server import OBJECTIVE_TOOL_NAME, REGISTER_METHOD_TOOL_NAME, TOOL_NAME, _dispatcher
+from limitless_library.mcp_server import (
+    FEEDBACK_TOOL_NAME,
+    OBJECTIVE_TOOL_NAME,
+    REGISTER_METHOD_TOOL_NAME,
+    TOOL_NAME,
+    _dispatcher,
+)
 from limitless_library.method_capture import (
     CapturedMethodCatalog,
     MethodCaptureError,
@@ -355,6 +361,7 @@ def test_stdio_mcp_lists_capture_and_requires_explicit_public_settings(tmp_path:
     assert [tool["name"] for tool in responses[0]["result"]["tools"]] == [
         TOOL_NAME,
         OBJECTIVE_TOOL_NAME,
+        FEEDBACK_TOOL_NAME,
         REGISTER_METHOD_TOOL_NAME,
     ]
     assert responses[1]["result"]["structuredContent"]["destination"] == "local"

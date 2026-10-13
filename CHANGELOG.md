@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Share immutable draft registration, revision lineage, idempotent retry, and
+  projection recovery with host integrations. Original native draft records
+  and capsule digests remain unchanged.
+- Record private, content-bound reuse outcomes through MCP and CLI. Success,
+  failure, and blockage remain self-reports; the tool cannot publish notes or
+  turn a report into independently checked evidence.
+
 - Preserve stored records when rejecting oversized UTF-8 query policy. New
   captures remain within original readers' byte bound; older oversized captures
   can be read without rewriting their identities or guidance.

@@ -19,6 +19,8 @@ def test_all_bundled_schemas_are_valid_draft_2020_12() -> None:
         "adoption-receipt-0.1.schema.json",
         "capsule-0.1.schema.json",
         "decision-0.1.schema.json",
+        "method-feedback-input-1.0.schema.json",
+        "method-feedback-result-1.0.schema.json",
         "objective-query-1.0.schema.json",
         "objective-result-1.0.schema.json",
         "query-0.1.schema.json",

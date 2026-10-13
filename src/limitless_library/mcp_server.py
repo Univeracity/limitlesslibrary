@@ -26,6 +26,7 @@ from .method_capture import (
     register_method,
     schedule_submission,
 )
+from .method_feedback import MethodFeedbackError, record_method_feedback
 from .objective_query import ObjectiveQueryEngine, ObjectiveQueryError
 from .query_policy import QueryPolicyError
 from .schemas import load_schema
@@ -34,6 +35,11 @@ SERVER_NAME = "limitless-library"
 TOOL_NAME = "limitless_query_before_work"
 REGISTER_METHOD_TOOL_NAME = "limitless_register_method"
 OBJECTIVE_TOOL_NAME = "limitless_check"
+FEEDBACK_TOOL_NAME = "limitless_record_outcome"
+FEEDBACK_INSTRUCTIONS = (
+    " Record actual fresh-use outcomes with limitless_record_outcome when a queryRef is available."
+    " Reports are private and self-reported; delivery alone is not success."
+)
 MAX_REQUEST_BYTES = 1024 * 1024
 SERVER_INSTRUCTIONS = "Query before material work; locally verify any selected bytes before adoption."
 METHOD_INSTRUCTIONS = (
@@ -57,6 +63,22 @@ def objective_tool(*, service_queries: bool = False) -> dict[str, Any]:
         "inputSchema": load_schema("objective-query-1.0.schema.json"),
         "outputSchema": load_schema("objective-result-1.0.schema.json"),
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": service_queries},
+    }
+
+
+def feedback_tool() -> dict[str, Any]:
+    return {
+        "name": FEEDBACK_TOOL_NAME,
+        "title": "Record reuse outcome",
+        "description": "Keep a private self-report of fresh use, failure, or blockage for an existing queryRef; never publishes or attests success.",
+        "inputSchema": load_schema("method-feedback-input-1.0.schema.json"),
+        "outputSchema": load_schema("method-feedback-result-1.0.schema.json"),
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
     }
 
 
@@ -173,6 +195,11 @@ def _dispatcher(
     )
 
     def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if name == FEEDBACK_TOOL_NAME and objective_engine is not None and objective_engine.state_dir is not None:
+            try:
+                return record_method_feedback(objective_engine.state_dir, arguments)
+            except (MethodFeedbackError, OSError, ValueError) as error:
+                raise McpToolCallError(str(error)) from error
         if name == OBJECTIVE_TOOL_NAME and objective_engine is not None:
             try:
                 return objective_engine.check(arguments)
@@ -193,6 +220,8 @@ def _dispatcher(
     tools = [_tool()]
     if objective_engine is not None:
         tools.append(objective_tool(service_queries=True))
+        if objective_engine.state_dir is not None:
+            tools.append(feedback_tool())
     if method_store is not None:
         tools.append(_register_method_tool(public_submission=public_method_policy_digest is not None))
     return LibraryToolDispatcher(
@@ -200,6 +229,7 @@ def _dispatcher(
         server_version=__version__,
         instructions=SERVER_INSTRUCTIONS
         + (OBJECTIVE_INSTRUCTIONS if objective_engine is not None else "")
+        + (FEEDBACK_INSTRUCTIONS if objective_engine is not None and objective_engine.state_dir is not None else "")
         + (METHOD_INSTRUCTIONS if method_store is not None else ""),
         tools=tools,
         call_tool=call_tool,

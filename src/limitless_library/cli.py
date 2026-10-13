@@ -19,6 +19,7 @@ from .contracts import ContractError, load_json, write_new_json
 from .demo import DemoError, format_demo, run_demo
 from .installer import AdoptionError, adopt_exact_component, seal_recipe, validate_recipe
 from .method_capture import CapturedMethodCatalog, MethodCaptureError, default_method_store, query_with_captured_methods
+from .method_feedback import MethodFeedbackError, record_method_feedback
 from .objective_query import ObjectiveQueryEngine, ObjectiveQueryError
 from .official_service import (
     activate_official_service,
@@ -33,7 +34,7 @@ from .publication import (
     revoke_publication,
     seal_publication_method,
 )
-from .query_policy import QueryPolicyError, load_query_policy, save_query_policy
+from .query_policy import QueryPolicyError, load_query_policy, read_private_json, save_query_policy
 from .sandbox import containment_readiness
 from .service_connector import (
     ServiceConnector,
@@ -120,6 +121,10 @@ def _parser() -> argparse.ArgumentParser:
     check.add_argument("--query-policy", type=Path)
     check.add_argument("--query-state", type=Path)
     check.add_argument("--output", type=Path)
+
+    feedback = subparsers.add_parser("record-outcome", help="retain a private self-report for an existing queryRef")
+    feedback.add_argument("--input", required=True, type=Path, help="owner-private bounded outcome JSON")
+    feedback.add_argument("--query-state", type=Path)
 
     query_policy = subparsers.add_parser(
         "query-policy", help="inspect or configure separate objective-query permission"
@@ -275,6 +280,9 @@ def main() -> None:
                 write_new_json(args.output, result)
             else:
                 _print(result)
+        elif args.command == "record-outcome":
+            state = args.query_state or default_method_store().parent / "queries"
+            _print(record_method_feedback(state, read_private_json(args.input, maximum=8 * 1024)))
         elif args.command == "query-policy":
             path = args.path or default_method_store().parent / "query-policy.json"
             policy = load_query_policy(path)
@@ -443,6 +451,7 @@ def main() -> None:
         ContractError,
         DemoError,
         MethodCaptureError,
+        MethodFeedbackError,
         ObjectiveQueryError,
         QueryPolicyError,
         PublicationError,
