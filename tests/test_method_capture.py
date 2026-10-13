@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from limitless_library.catalog import LocalCatalog
+from limitless_library.catalog import CatalogError, LocalCatalog
 from limitless_library.contracts import canonical_json_bytes, load_json
 from limitless_library.mcp_protocol import modern_metadata
 from limitless_library.mcp_server import REGISTER_METHOD_TOOL_NAME, TOOL_NAME, _dispatcher
@@ -276,6 +276,10 @@ def test_capture_is_immediately_searchable_without_changing_existing_store_or_ca
     assert LocalCatalog(CATALOG).catalog_digest == original_digest
     # A new process/catalog instance can use an original-format capture without migration.
     assert query_with_captured_methods(LocalCatalog(CATALOG), request, store) == decision
+    combined = catalog.with_method_capsules(captured_method_capsules(store))
+    combined.validate_decision(decision, request=request)
+    with pytest.raises(CatalogError, match="no on-disk capsule root"):
+        combined.selected_capsule_root(decision)
 
 
 @pytest.mark.parametrize("mismatch", ["public-scope", "wrong-platform", "unrelated-objective"])

@@ -53,7 +53,7 @@ _SEARCH_NOISE = frozenset(
 
 @dataclass(frozen=True)
 class _Capsule:
-    root: Path
+    root: Path | None
     record: dict[str, Any]
 
 
@@ -234,7 +234,7 @@ class LocalCatalog:
             validate_capsule(record, self.root)
             if any(offer["kind"] != "method" for offer in record["offers"]):
                 raise CatalogError("captured method projections cannot contain exact components")
-            capsules.append(_Capsule(root=self.root, record=record))
+            capsules.append(_Capsule(root=None, record=record))
         combined = object.__new__(LocalCatalog)
         combined.root = self.root
         combined._set_capsules(capsules)
@@ -341,5 +341,7 @@ class LocalCatalog:
             raise CatalogError("abstention has no capsule root")
         for capsule in self._capsules:
             if capsule.record["capsuleDigest"] == selected["capsule"]["digest"]:
+                if capsule.root is None:
+                    raise CatalogError("captured method has no on-disk capsule root")
                 return capsule.root
         raise CatalogError("selected capsule is unavailable")
