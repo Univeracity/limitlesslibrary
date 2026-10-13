@@ -18,6 +18,7 @@ from .catalog import CatalogError, LocalCatalog, seal_capsule
 from .contracts import ContractError, load_json, write_new_json
 from .demo import DemoError, format_demo, run_demo
 from .installer import AdoptionError, adopt_exact_component, seal_recipe, validate_recipe
+from .method_capture import MethodCaptureError, query_with_captured_methods
 from .official_service import (
     activate_official_service,
     activated_service_connector,
@@ -104,6 +105,9 @@ def _parser() -> argparse.ArgumentParser:
 
     query = subparsers.add_parser("query", help="select exact reuse, a method, or abstention")
     query.add_argument("--catalog", type=Path, required=True)
+    query.add_argument(
+        "--method-store", type=Path, help="include private captured methods without changing the catalog"
+    )
     query.add_argument("--request", type=Path, required=True)
     query.add_argument("--output", type=Path)
 
@@ -190,7 +194,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     service_query.add_argument("--request", type=Path)
     service_query.add_argument("--objective")
-    service_query.add_argument("--receiver", type=Path, help="service receiver context JSON; see examples/receiver-context.json")
+    service_query.add_argument(
+        "--receiver", type=Path, help="service receiver context JSON; see examples/receiver-context.json"
+    )
     service_query.add_argument("--request-id")
     service_query.add_argument("--output", type=Path)
     service_query.add_argument(
@@ -199,7 +205,9 @@ def _parser() -> argparse.ArgumentParser:
         help="fetch a selected exact artifact into this new file",
     )
 
-    method = subparsers.add_parser("seal-method", help="validate and write canonical method JSON locally without publishing")
+    method = subparsers.add_parser(
+        "seal-method", help="validate and write canonical method JSON locally without publishing"
+    )
     method.add_argument("--draft", type=Path, required=True)
     method.add_argument("--output", type=Path, required=True)
 
@@ -248,7 +256,9 @@ def main() -> None:
             catalog = LocalCatalog(args.catalog)
             _print({"status": "valid", "catalogDigest": catalog.catalog_digest})
         elif args.command == "query":
-            decision = LocalCatalog(args.catalog).query(load_json(args.request))
+            decision = query_with_captured_methods(
+                LocalCatalog(args.catalog), load_json(args.request), args.method_store
+            )
             if args.output:
                 write_new_json(args.output, decision)
             else:
@@ -372,6 +382,7 @@ def main() -> None:
         CatalogError,
         ContractError,
         DemoError,
+        MethodCaptureError,
         PublicationError,
         ServiceConnectorError,
     ) as error:

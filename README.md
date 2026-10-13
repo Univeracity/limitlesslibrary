@@ -217,6 +217,20 @@ service has verified the method or accepted it into its catalog. Query results
 remain a decision channel, not an artifact transport; installation remains an
 explicit receiver-local operation.
 
+Captured methods become available to the same MCP query immediately. Their
+private store stays separate from the configured catalog, and existing capture
+files are read without migration. Applicability, checks, and limitations remain
+in the returned guidance. Repeated observations of identical guidance do not
+create competing search results. An unchanged selection from the configured
+catalog retains its original decision and catalog binding.
+
+For a standalone CLI query, include the store explicitly:
+
+```bash
+limitless query --catalog examples/catalog --request REQUEST.json \
+  --method-store /absolute/path/to/private-methods
+```
+
 An owner who wants new methods submitted to the public service can activate
 the service, inspect and review its publication policy, then configure the MCP
 command with **both** `--submit-methods-publicly` and

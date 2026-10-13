@@ -165,8 +165,14 @@ class McpStdioConnector:
     def query(self, request: dict[str, Any]) -> dict[str, Any]:
         self._request("server/discover", {})
         listing = self._request("tools/list", {})
-        if [tool.get("name") for tool in listing.get("tools", [])] != [TOOL_NAME]:
-            raise ConnectorError("MCP peer does not expose the expected sole tool")
+        tools = listing.get("tools")
+        if not isinstance(tools, list) or not 1 <= len(tools) <= 64 or any(not isinstance(tool, dict) for tool in tools):
+            raise ConnectorError("MCP peer has an invalid or oversized tool listing")
+        names = [tool.get("name") for tool in tools]
+        if any(not isinstance(name, str) or not name for name in names) or len(set(names)) != len(names):
+            raise ConnectorError("MCP peer has invalid or duplicate tool names")
+        if names.count(TOOL_NAME) != 1:
+            raise ConnectorError("MCP peer does not expose the expected query tool")
         result = self._request("tools/call", {"name": TOOL_NAME, "arguments": request})
         if result.get("isError") is not False or not isinstance(result.get("structuredContent"), dict):
             raise ConnectorError("MCP tool call did not return structured decision content")

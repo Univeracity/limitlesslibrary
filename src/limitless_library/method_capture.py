@@ -10,11 +10,15 @@ import secrets
 import stat
 import subprocess  # nosec B404
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .catalog import CatalogError, LocalCatalog
 from .contracts import canonical_json_bytes, sha256_json, strict_json_loads
+from .method_projection import project_method_capsule
 from .official_service import activated_service_connector
 from .publication import PublicationError, publish_draft
 from .service_connector import ServiceConnectorError
@@ -171,6 +175,143 @@ def _publication(value: dict[str, Any], capture_digest: str) -> dict[str, Any]:
         ],
         "rights": {"license": "CC0-1.0", "allowedUses": ["derive-method"], "hasAuthority": True},
     }
+
+
+@contextmanager
+def _capture_folders(store_path: Path) -> Iterator[list[Path]]:
+    """Bounded, read-only snapshot shared with registration's writer lock."""
+    store = Path(store_path)
+    if not store.is_absolute() or ".." in store.parts or store.is_symlink():
+        raise MethodCaptureError("method store must be an absolute, non-symlink directory")
+    if not store.exists():
+        yield []
+        return
+    if os.name != "posix":
+        raise MethodCaptureError("private method capture currently requires a POSIX host")
+    info = store.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+        raise MethodCaptureError("method store must be owned and private")
+    import fcntl
+
+    lock_path = store / ".register.lock"
+    if not lock_path.exists() and not any(re.fullmatch(r"[0-9a-f]{64}", path.name) for path in store.iterdir()):
+        yield []
+        return
+    try:
+        lock = os.open(lock_path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as error:
+        raise MethodCaptureError("method store lock is unavailable") from error
+    try:
+        if not stat.S_ISREG(os.fstat(lock).st_mode):
+            raise MethodCaptureError("method store lock must be a regular file")
+        fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        folders = sorted(path for path in store.iterdir() if re.fullmatch(r"[0-9a-f]{64}", path.name))
+        if len(folders) > _MAX_RECORDS:
+            raise MethodCaptureError("method store exceeds its bounded capacity")
+        for folder in folders:
+            info = folder.lstat()
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+                raise MethodCaptureError("method record directory is unsafe")
+        yield folders
+    except (OSError, UnicodeError, ValueError, CatalogError) as error:
+        raise MethodCaptureError(f"captured methods cannot be queried safely: {error}") from error
+    finally:
+        os.close(lock)
+
+
+def captured_method_capsules(store_path: Path) -> list[dict[str, Any]]:
+    """Project original captures without rewriting or publishing their bytes."""
+    capsules = []
+    equivalence = set()
+    with _capture_folders(store_path) as folders:
+        for folder in folders:
+            record = strict_json_loads(_read(folder / "capture.json").decode("utf-8"))
+            fields = {"schemaVersion", "methodRef", "title", "taskKind", "method", "observedOutcome", "platform"}
+            if (
+                not isinstance(record, dict)
+                or set(record) != fields
+                or record["schemaVersion"] != "limitless.method-capture/0.1"
+                or record["methodRef"] != "method:" + folder.name
+            ):
+                raise MethodCaptureError("method capture record is invalid or misbound")
+            value = _input({key: record[key] for key in fields - {"schemaVersion", "methodRef"}})
+            if sha256_json(value) != "sha256:" + folder.name:
+                raise MethodCaptureError("method capture differs from its digest-bound record")
+            if _read(folder / "method.json") != canonical_json_bytes(value["method"]) + b"\n":
+                raise MethodCaptureError("stored method differs from its digest-bound record")
+            # Repeated observations do not make identical guidance ambiguous.
+            # Keep each original capture and outcome separately addressable.
+            content = sha256_json({key: item for key, item in value.items() if key != "observedOutcome"})
+            if content in equivalence:
+                continue
+            equivalence.add(content)
+            capsules.append(
+                project_method_capsule(
+                    capsule_id="capsule:captured." + folder.name,
+                    offer_id="offer:captured." + folder.name,
+                    version="1.0.0",
+                    title=value["title"],
+                    task_kind=value["taskKind"],
+                    method=value["method"],
+                    compatibility={
+                        "constraints": [] if value["platform"] == "any" else [value["platform"]],
+                        "toolchain": {},
+                    },
+                )
+            )
+    return capsules
+
+
+def _capture_fingerprint(store_path: Path) -> tuple:
+    """Invalidate a private in-process snapshot after any capture file changes."""
+    with _capture_folders(store_path) as folders:
+        result = []
+        for folder in folders:
+            files = []
+            for name in ("capture.json", "method.json"):
+                info = (folder / name).lstat()
+                files.append((info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_mode))
+            result.append((folder.name, tuple(files)))
+        return tuple(result)
+
+
+class CapturedMethodCatalog:
+    """Refresh private captures in one MCP process; preserve existing decisions."""
+
+    def __init__(self, catalog: LocalCatalog, store_path: Path | None):
+        self.catalog = catalog
+        self.store_path = store_path
+        self._fingerprint: tuple | None = None
+        self._combined = catalog
+
+    def query(self, request: dict[str, Any]) -> dict[str, Any]:
+        original = self.catalog.query(request)
+        if self.store_path is None:
+            return original
+        try:
+            fingerprint = _capture_fingerprint(self.store_path)
+            if fingerprint != self._fingerprint:
+                methods = captured_method_capsules(self.store_path)
+                self._combined = self.catalog.with_method_capsules(methods)
+                self._fingerprint = fingerprint
+            decision = self._combined.query(request)
+        except (MethodCaptureError, CatalogError):
+            # A damaged optional capture store must not disable a valid existing
+            # catalog selection. No unvalidated capture is used in this path.
+            if original["selected"] is not None:
+                return original
+            raise
+        # Existing CLI adopters validate against their unchanged source catalog.
+        # Added private captures cannot change that decision's catalog binding
+        # when the selected work itself has not changed.
+        return original if decision["selected"] == original["selected"] else decision
+
+
+def query_with_captured_methods(
+    catalog: LocalCatalog, request: dict[str, Any], store_path: Path | None
+) -> dict[str, Any]:
+    """Select across existing capsules and private captures using one decision law."""
+    return CapturedMethodCatalog(catalog, store_path).query(request)
 
 
 def _status(folder: Path) -> str:

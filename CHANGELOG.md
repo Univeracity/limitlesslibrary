@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Captured source-free methods are immediately searchable through MCP without
+  rewriting existing records or the configured catalog. Checks, applicability,
+  and limits remain in the guidance; repeated observations are consolidated
+  for selection without merging their evidence claims.
+- Shared private method projection for client integrations, with unchanged
+  legacy local capsule digests.
+- Validated private query snapshots refresh after capture changes. Unchanged
+  catalog selections retain their original decision bindings.
+- Original Python connector discovery remains usable as tools are added;
+  current connectors accept additional tools and reject ambiguous listings.
+
 ## 0.1.0a1 - 2026-10-10
 
 - Published alpha packages and release checksums.

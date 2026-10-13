@@ -199,6 +199,9 @@ class LocalCatalog:
             capsules.append(_Capsule(root=manifest.parent, record=record))
         if not capsules:
             raise CatalogError("catalog contains no capsule.json manifests")
+        self._set_capsules(capsules)
+
+    def _set_capsules(self, capsules: list[_Capsule]) -> None:
         identities: set[tuple[str, str]] = set()
         for capsule in capsules:
             identity = (capsule.record["id"], capsule.record["version"])
@@ -216,6 +219,26 @@ class LocalCatalog:
                 for capsule in sorted(capsules, key=lambda item: (item.record["id"], item.record["version"]))
             ]
         )
+
+    def with_method_capsules(self, records: list[dict[str, Any]]) -> LocalCatalog:
+        """Combine validated private methods without writing into the source catalog.
+
+        Exact component roots and the decision contract are preserved. Methods
+        cannot introduce executable file mappings through this boundary.
+        """
+        if not records:
+            return self
+        capsules = list(self._capsules)
+        for value in records:
+            record = copy.deepcopy(value)
+            validate_capsule(record, self.root)
+            if any(offer["kind"] != "method" for offer in record["offers"]):
+                raise CatalogError("captured method projections cannot contain exact components")
+            capsules.append(_Capsule(root=self.root, record=record))
+        combined = object.__new__(LocalCatalog)
+        combined.root = self.root
+        combined._set_capsules(capsules)
+        return combined
 
     def query(self, request: dict[str, Any]) -> dict[str, Any]:
         """Return one exact offer, one method, or non-disclosing abstention."""

@@ -11,10 +11,17 @@ from types import SimpleNamespace
 import pytest
 
 from limitless_library.catalog import LocalCatalog
-from limitless_library.contracts import load_json
+from limitless_library.contracts import canonical_json_bytes, load_json
 from limitless_library.mcp_protocol import modern_metadata
 from limitless_library.mcp_server import REGISTER_METHOD_TOOL_NAME, TOOL_NAME, _dispatcher
-from limitless_library.method_capture import MethodCaptureError, register_method, sync_methods
+from limitless_library.method_capture import (
+    CapturedMethodCatalog,
+    MethodCaptureError,
+    captured_method_capsules,
+    query_with_captured_methods,
+    register_method,
+    sync_methods,
+)
 from limitless_library.publication import PublicationError, _new_state, _source_descriptor
 from limitless_library.service_contracts import validate_source_free_method
 from limitless_library.service_identity import InstallationSigner
@@ -214,6 +221,7 @@ def test_stdio_mcp_lists_capture_and_requires_explicit_public_settings(tmp_path:
             "params": {"_meta": modern_metadata(client_name="method-test", client_version="1")},
         },
         _call(REGISTER_METHOD_TOOL_NAME, _method()),
+        _call(TOOL_NAME, _captured_query()),
     ]
     good = subprocess.run(
         command,
@@ -226,3 +234,161 @@ def test_stdio_mcp_lists_capture_and_requires_explicit_public_settings(tmp_path:
     responses = [json.loads(line) for line in good.stdout.splitlines()]
     assert [tool["name"] for tool in responses[0]["result"]["tools"]] == [TOOL_NAME, REGISTER_METHOD_TOOL_NAME]
     assert responses[1]["result"]["structuredContent"]["destination"] == "local"
+    assert responses[2]["result"]["structuredContent"]["decision"] == "instantiate"
+
+
+def _captured_query() -> dict:
+    return {
+        "schemaVersion": "limitless.query/0.1",
+        "objective": "Verify observed adoption",
+        "taskKind": "receiver-verification",
+        "receiver": {"constraints": ["linux"], "toolchain": {}},
+        "requestedUse": "instantiate",
+        "tenantScope": "private",
+        "evaluatedAt": "2026-10-12T00:00:00Z",
+    }
+
+
+def test_capture_is_immediately_searchable_without_changing_existing_store_or_catalog(tmp_path: Path) -> None:
+    catalog = LocalCatalog(CATALOG)
+    original_digest = catalog.catalog_digest
+    store = tmp_path / "methods"
+    dispatcher = _dispatcher(catalog, method_store=store)
+    request = _captured_query()
+    assert dispatcher.handle(_call(TOOL_NAME, request))["result"]["structuredContent"]["decision"] == "abstain"
+    capture = dispatcher.handle(_call(REGISTER_METHOD_TOOL_NAME, _method()))["result"]["structuredContent"]
+    folder = store / capture["methodRef"].split(":", 1)[1]
+    original_files = {path.name: path.read_bytes() for path in folder.iterdir()}
+
+    decision = dispatcher.handle(_call(TOOL_NAME, request))["result"]["structuredContent"]
+    assert decision["decision"] == "instantiate"
+    assert decision["selected"]["offer"]["files"] is None
+    projection = decision["selected"]["offer"]["method"]
+    canonical = _method()["method"]
+    for step, delivered in zip(canonical["steps"], projection["steps"], strict=True):
+        assert step["instruction"] in delivered and step["expected"] in delivered and step["check"] in delivered
+    assert all(item in projection["verification"] for item in canonical["evaluation"])
+    assert all(any(item in text for text in projection["verification"]) for item in canonical["constraints"])
+    assert all(any(item in text for text in projection["verification"]) for item in canonical["limitations"])
+    assert _method()["observedOutcome"] not in json.dumps(decision)
+    assert original_files == {path.name: path.read_bytes() for path in folder.iterdir()}
+    assert catalog.catalog_digest == original_digest
+    assert LocalCatalog(CATALOG).catalog_digest == original_digest
+    # A new process/catalog instance can use an original-format capture without migration.
+    assert query_with_captured_methods(LocalCatalog(CATALOG), request, store) == decision
+
+
+@pytest.mark.parametrize("mismatch", ["public-scope", "wrong-platform", "unrelated-objective"])
+def test_private_capture_keeps_scope_platform_and_relevance_checks(tmp_path: Path, mismatch: str) -> None:
+    store = tmp_path / "methods"
+    register_method(store, _method())
+    request = _captured_query()
+    if mismatch == "public-scope":
+        request["tenantScope"] = "public"
+    elif mismatch == "wrong-platform":
+        request["receiver"]["constraints"] = ["windows"]
+    else:
+        request["objective"] = "Change screen brightness"
+    decision = query_with_captured_methods(LocalCatalog(CATALOG), request, store)
+    assert decision["decision"] == "abstain" and decision["selected"] is None
+
+
+def test_portable_capture_does_not_require_a_distribution_tag(tmp_path: Path) -> None:
+    method = _method()
+    method["platform"] = "any"
+    store = tmp_path / "methods"
+    register_method(store, method)
+    request = _captured_query()
+    request["receiver"]["constraints"] = []
+    assert query_with_captured_methods(LocalCatalog(CATALOG), request, store)["decision"] == "instantiate"
+
+
+@pytest.mark.parametrize("tamper", ["capture", "method", "symlink"])
+def test_query_rejects_changed_capture_or_method_bytes(tmp_path: Path, tamper: str) -> None:
+    store = tmp_path / "methods"
+    capture = register_method(store, _method())
+    folder = store / capture["methodRef"].split(":", 1)[1]
+    if tamper == "capture":
+        record = load_json(folder / "capture.json")
+        record["observedOutcome"] = "A different outcome"
+        (folder / "capture.json").write_bytes(canonical_json_bytes(record) + b"\n")
+    elif tamper == "method":
+        (folder / "method.json").write_text(json.dumps(_method()["method"], indent=2))
+    else:
+        (folder / "method.json").unlink()
+        (folder / "method.json").symlink_to(ROOT / "examples/publication/method.json")
+    dispatcher = _dispatcher(LocalCatalog(CATALOG), method_store=store)
+    response = dispatcher.handle(_call(TOOL_NAME, _captured_query()))
+    assert response["result"]["isError"] is True
+    assert "selected" not in response["result"].get("structuredContent", {})
+
+
+def test_query_does_not_wait_on_a_registration_writer(tmp_path: Path) -> None:
+    import fcntl
+
+    store = tmp_path / "methods"
+    register_method(store, _method())
+    with (store / ".register.lock").open("rb") as writer:
+        fcntl.flock(writer, fcntl.LOCK_EX)
+        with pytest.raises(MethodCaptureError, match="cannot be queried safely"):
+            captured_method_capsules(store)
+
+
+def test_missing_and_empty_capture_stores_do_not_change_legacy_queries(tmp_path: Path) -> None:
+    catalog = LocalCatalog(CATALOG)
+    request = load_json(ROOT / "examples/requests/exact-python.json")
+    store = tmp_path / "methods"
+    assert query_with_captured_methods(catalog, request, store) == catalog.query(request)
+    assert not store.exists()
+    store.mkdir(mode=0o700)
+    assert query_with_captured_methods(catalog, request, store) == catalog.query(request)
+    assert list(store.iterdir()) == []
+
+
+def test_existing_exact_decision_keeps_its_original_catalog_binding(tmp_path: Path) -> None:
+    catalog = LocalCatalog(CATALOG)
+    request = load_json(ROOT / "examples/requests/exact-python.json")
+    store = tmp_path / "methods"
+    capture = register_method(store, _method())
+    original = catalog.query(request)
+    result = query_with_captured_methods(catalog, request, store)
+    assert canonical_json_bytes(result) == canonical_json_bytes(original)
+    catalog.validate_decision(result, request=request)
+    assert catalog.selected_capsule_root(result) == catalog.selected_capsule_root(original)
+    # Optional new capture failure cannot disable an existing valid catalog hit.
+    (store / capture["methodRef"].split(":", 1)[1] / "method.json").write_text("altered")
+    assert query_with_captured_methods(catalog, request, store) == original
+
+
+def test_warm_snapshot_refreshes_after_capture_and_detects_tampering(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from limitless_library import method_capture
+
+    store = tmp_path / "methods"
+    capture = register_method(store, _method())
+    snapshot = CapturedMethodCatalog(LocalCatalog(CATALOG), store)
+    original_loader = method_capture.captured_method_capsules
+    loads = []
+
+    def counted(path: Path) -> list:
+        loads.append(path)
+        return original_loader(path)
+
+    monkeypatch.setattr(method_capture, "captured_method_capsules", counted)
+    first = snapshot.query(_captured_query())
+    assert snapshot.query(_captured_query()) == first
+    assert len(loads) == 1
+    second_observation = _method()
+    second_observation["observedOutcome"] = "The receiver observed the work again."
+    register_method(store, second_observation)
+    assert snapshot.query(_captured_query())["decision"] == "instantiate"
+    assert len(loads) == 2
+    assert len(captured_method_capsules(store)) == 1
+    method_file = store / capture["methodRef"].split(":", 1)[1] / "method.json"
+    stamp = method_file.stat()
+    data = method_file.read_bytes()
+    method_file.write_bytes(data.replace(b"receiver", b"Receiver", 1))
+    os.utime(method_file, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    with pytest.raises(MethodCaptureError, match="digest-bound"):
+        snapshot.query(_captured_query())

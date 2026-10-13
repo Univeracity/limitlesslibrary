@@ -63,6 +63,30 @@ registration queues the background publisher, while service admission remains
 independent. `verifiedTargets` stays empty until separate receiver evidence
 exists. Method capture does not install artifact bytes.
 
+The query combines the configured catalog with validated owner-private captures.
+Original `limitless.method-capture/0.1` files and canonical method bytes remain
+unchanged. Platform declarations gate local eligibility; portable `any` methods
+do not require a distribution label. Local projection retains each step's check
+and expected outcome, all applicability constraints, evaluations, and limitations.
+Captured observations are not included in the selected method or interpreted as
+independent verification. Captures with identical guidance and compatibility
+produce one search candidate while retaining their separate original records.
+
+An in-process snapshot refreshes when capture files change. Its fingerprint
+includes inode, size, modification time, change time, and mode, and is checked
+under a non-blocking shared registration lock. Changed or malformed captures
+are not selected. A valid existing catalog selection remains available if the
+optional capture store fails validation. Otherwise the tool reports an error.
+If the selected work is unchanged, the original catalog decision is returned
+byte-for-byte so existing CLI adopters can still validate its binding.
+
+The original Python connectors (`0.1.0a0` and `0.1.0a1`) require a sole-tool
+discovery response. Their advertised client metadata selects that compatible
+listing; other agents receive all configured tools. This affects presentation
+only and grants no authority. Current connectors accept additional uniquely
+named tools but invoke only `limitless_query_before_work`. Tool discovery uses
+private cache scope.
+
 ## Managed-service façade
 
 The optional service connector uses the versioned public records implemented

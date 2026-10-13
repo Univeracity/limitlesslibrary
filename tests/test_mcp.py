@@ -20,7 +20,7 @@ from limitless_library.mcp_protocol import (
     McpToolSession,
     modern_metadata,
 )
-from limitless_library.mcp_server import SERVER_INSTRUCTIONS, TOOL_NAME, handle_message
+from limitless_library.mcp_server import SERVER_INSTRUCTIONS, TOOL_NAME, _dispatcher, handle_message
 
 ROOT = Path(__file__).parents[1]
 CATALOG_PATH = ROOT / "examples" / "catalog"
@@ -131,9 +131,7 @@ def test_generic_dispatcher_keeps_modern_and_legacy_tools_on_one_handler() -> No
         call_tool=call_tool,
         cache_scope="private",
     )
-    modern = dispatcher.handle(
-        _message("tools/call", {"name": "fixture_echo", "arguments": {"value": "modern"}})
-    )
+    modern = dispatcher.handle(_message("tools/call", {"name": "fixture_echo", "arguments": {"value": "modern"}}))
     legacy = dispatcher.handle(
         {
             "jsonrpc": "2.0",
@@ -168,15 +166,11 @@ def test_generic_dispatcher_returns_tool_error_without_hiding_protocol_success()
         ],
         call_tool=fail,
     )
-    response = dispatcher.handle(
-        _message("tools/call", {"name": "fixture_hold", "arguments": {}})
-    )
+    response = dispatcher.handle(_message("tools/call", {"name": "fixture_hold", "arguments": {}}))
 
     assert response["result"]["isError"] is True
     assert response["result"]["content"][0]["text"] == "held by fixture policy"
-    invalid = dispatcher.handle(
-        _message("tools/call", {"name": "unlisted", "arguments": {}})
-    )
+    invalid = dispatcher.handle(_message("tools/call", {"name": "unlisted", "arguments": {}}))
     assert invalid["error"]["code"] == -32602
 
 
@@ -189,7 +183,8 @@ def test_generic_dispatcher_returns_tool_error_without_hiding_protocol_success()
     ],
 )
 def test_generic_session_requires_initialize_but_keeps_modern_stateless(
-    protocol_version: str, expected: str,
+    protocol_version: str,
+    expected: str,
 ) -> None:
     dispatcher = McpToolDispatcher(
         server_name="fixture",
@@ -217,16 +212,10 @@ def test_generic_session_requires_initialize_but_keeps_modern_stateless(
         },
     }
     held = session.handle(initialization_call)
-    modern = session.handle(
-        _message("tools/call", {"name": "fixture_echo", "arguments": {"era": "modern"}}, 2)
-    )
-    initialized = session.handle(
-        _initialize_message(protocol_version, 3)
-    )
+    modern = session.handle(_message("tools/call", {"name": "fixture_echo", "arguments": {"era": "modern"}}, 2))
+    initialized = session.handle(_initialize_message(protocol_version, 3))
     still_held = session.handle(initialization_call)
-    initialized_notification = session.handle(
-        {"jsonrpc": "2.0", "method": "notifications/initialized"}
-    )
+    initialized_notification = session.handle({"jsonrpc": "2.0", "method": "notifications/initialized"})
     admitted = session.handle(initialization_call)
 
     assert held["error"]["code"] == -32600
@@ -262,21 +251,11 @@ def test_legacy_session_rejects_malformed_envelopes_before_tool_dispatch() -> No
             "params": {"protocolVersion": STABLE_PROTOCOL_VERSION},
         }
     )
-    still_held = session.handle(
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
-    )
-    initialized = session.handle(
-        _initialize_message(STABLE_PROTOCOL_VERSION, 3)
-    )
-    ready = session.handle(
-        {"jsonrpc": "2.0", "method": "notifications/initialized"}
-    )
-    invalid_id = session.handle(
-        {"jsonrpc": "2.0", "id": True, "method": "tools/list", "params": {}}
-    )
-    missing_id = session.handle(
-        {"jsonrpc": "2.0", "method": "tools/call", "params": {}}
-    )
+    still_held = session.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+    initialized = session.handle(_initialize_message(STABLE_PROTOCOL_VERSION, 3))
+    ready = session.handle({"jsonrpc": "2.0", "method": "notifications/initialized"})
+    invalid_id = session.handle({"jsonrpc": "2.0", "id": True, "method": "tools/list", "params": {}})
+    missing_id = session.handle({"jsonrpc": "2.0", "method": "tools/call", "params": {}})
 
     assert malformed_initialize["error"]["code"] == -32600
     assert still_held["error"]["code"] == -32600
@@ -304,16 +283,10 @@ def test_legacy_session_ignores_notifications_without_responses() -> None:
     )
     session = McpToolSession(dispatcher)
 
-    pre_initialize = session.handle(
-        {"jsonrpc": "2.0", "method": "notifications/initialized"}
-    )
-    cancellation = session.handle(
-        {"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {}}
-    )
+    pre_initialize = session.handle({"jsonrpc": "2.0", "method": "notifications/initialized"})
+    cancellation = session.handle({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {}})
     initialized = session.handle(_initialize_message(STABLE_PROTOCOL_VERSION))
-    final_notification = session.handle(
-        {"jsonrpc": "2.0", "method": "notifications/initialized"}
-    )
+    final_notification = session.handle({"jsonrpc": "2.0", "method": "notifications/initialized"})
 
     assert pre_initialize is None
     assert cancellation is None
@@ -337,9 +310,7 @@ def test_mcp_rejects_unexpected_tools_list_cursors() -> None:
         ],
         call_tool=lambda _name, arguments: arguments,
     )
-    legacy = dispatcher.handle(
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {"cursor": "unexpected"}}
-    )
+    legacy = dispatcher.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {"cursor": "unexpected"}})
 
     assert modern["error"]["code"] == -32602
     assert legacy["error"]["code"] == -32602
@@ -382,6 +353,49 @@ def test_bounded_stdio_connector_validates_request_binding() -> None:
         decision = connector.query(load_json(REQUEST))
     assert decision["decision"] == "reuse"
     assert decision["selected"]["offer"]["id"] == "offer:hello-python-exact"
+
+
+@pytest.mark.parametrize("version", ["0.1.0a0", "0.1.0a1"])
+def test_original_python_connector_gets_its_compatible_listing(tmp_path: Path, version: str) -> None:
+    dispatcher = _dispatcher(LocalCatalog(CATALOG_PATH), method_store=tmp_path / "methods")
+    request = _message("tools/list", {})
+    request["params"]["_meta"] = modern_metadata(client_name="limitless-library-python", client_version=version)
+    result = dispatcher.handle(request)["result"]
+    assert [tool["name"] for tool in result["tools"]] == [TOOL_NAME]
+    assert result["cacheScope"] == "private"
+    assert len(dispatcher.handle(_message("tools/list", {}))["result"]["tools"]) == 2
+
+
+def test_current_connector_accepts_additional_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from limitless_library import connector as connector_module
+
+    monkeypatch.setattr(connector_module, "__version__", "0.1.0a2")
+    command = [
+        sys.executable,
+        "-m",
+        "limitless_library.mcp_server",
+        "--catalog",
+        str(CATALOG_PATH),
+        "--method-store",
+        str(tmp_path / "methods"),
+    ]
+    with McpStdioConnector(command, environment={"PYTHONPATH": str(ROOT / "src")}) as connector:
+        assert len(connector._request("tools/list", {})["tools"]) == 2
+        decision = connector.query(load_json(REQUEST))
+    assert decision["decision"] == "reuse"
+
+
+@pytest.mark.parametrize("names", [[TOOL_NAME, TOOL_NAME], ["unrelated"], [TOOL_NAME, None]])
+def test_connector_rejects_missing_or_ambiguous_query_tools(names: list, monkeypatch: pytest.MonkeyPatch) -> None:
+    connector = McpStdioConnector([sys.executable])
+
+    def response(method: str, _params: dict) -> dict:
+        assert method != "tools/call"
+        return {"tools": [{"name": name} for name in names]} if method == "tools/list" else {}
+
+    monkeypatch.setattr(connector, "_request", response)
+    with pytest.raises(ConnectorError):
+        connector.query(load_json(REQUEST))
 
 
 @pytest.mark.parametrize("protocol_version", [STABLE_PROTOCOL_VERSION, "2025-11-25"])

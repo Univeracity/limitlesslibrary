@@ -12,13 +12,20 @@ from typing import Any
 from . import __version__
 from .catalog import CatalogError, LocalCatalog
 from .contracts import strict_json_loads
+from .mcp_compat import LibraryToolDispatcher
 from .mcp_protocol import (
     McpToolCallError,
     McpToolDispatcher,
     McpToolSession,
     jsonrpc_error,
 )
-from .method_capture import MethodCaptureError, default_method_store, register_method, schedule_submission
+from .method_capture import (
+    CapturedMethodCatalog,
+    MethodCaptureError,
+    default_method_store,
+    register_method,
+    schedule_submission,
+)
 from .schemas import load_schema
 
 SERVER_NAME = "limitless-library"
@@ -138,11 +145,13 @@ def handle_message(registry: LocalCatalog, message: dict[str, Any]) -> dict[str,
 def _dispatcher(
     registry: LocalCatalog, *, method_store: Path | None = None, public_method_policy_digest: str | None = None
 ) -> McpToolDispatcher:
+    captured_catalog = CapturedMethodCatalog(registry, method_store)
+
     def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if name == TOOL_NAME:
             try:
-                return registry.query(arguments)
-            except CatalogError as error:
+                return captured_catalog.query(arguments)
+            except (CatalogError, MethodCaptureError, OSError) as error:
                 raise McpToolCallError(str(error)) from error
         if name == REGISTER_METHOD_TOOL_NAME and method_store is not None:
             try:
@@ -151,7 +160,7 @@ def _dispatcher(
                 raise McpToolCallError(str(error)) from error
         raise McpToolCallError("tool is not available")
 
-    return McpToolDispatcher(
+    return LibraryToolDispatcher(
         server_name=SERVER_NAME,
         server_version=__version__,
         instructions=SERVER_INSTRUCTIONS + (METHOD_INSTRUCTIONS if method_store is not None else ""),
@@ -159,6 +168,7 @@ def _dispatcher(
         if method_store is not None
         else [_tool()],
         call_tool=call_tool,
+        cache_scope="private",
     )
 
 
