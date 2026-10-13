@@ -74,6 +74,12 @@ selection considers descriptive title and summary matches across task kinds and
 requires a unique best eligible result. The original structured query's selection
 rules and `limitless.decision/0.1` wire shape remain unchanged.
 
+A valid selection from the configured catalog remains authoritative for the
+legacy structured tool; adding private captures cannot replace that working
+selection. Captures can fill a legacy abstention. The new objective route ranks
+across both sources, so newer agents can find a better captured method without
+changing existing callers' selections or adoption bindings.
+
 Replies are limited to 32 KiB. A method is never silently truncated to meet this
 limit; an oversized result becomes an explicit abstention. Incomplete local
 coverage or unavailable service search is visible rather than represented as a
@@ -88,7 +94,9 @@ Later operations must revalidate that underlying authority and receiver state.
 
 Records use the sibling `queries` directory beside the method store, with private
 directory/file permissions. Each record is capped at 256 KiB and the store at
-2,000 records. Current continuation writing requires POSIX. If storage is unsafe,
+2,000 records. Current private query policy and continuation storage require
+POSIX; portability of receiver targets is separate from this host storage
+qualification. If storage is unsafe,
 busy, full, or unavailable, querying still returns useful guidance and reports
 `continuation: unavailable` with a null `queryRef`; it does not invent a usable
 continuation. Records stay local and are not automatically published.
@@ -97,3 +105,12 @@ Advanced hosts may bind `--query-policy` and `--query-state` at MCP startup or o
 the CLI. Neither path becomes a model tool argument. Original Python connectors
 receive their compatible query-only listing; other agents discover the new tool
 alongside the existing tools.
+
+Host integrations can supply a `CatalogSnapshot` as the captured catalog's
+`catalog_source`. It reuses validated in-process snapshots while checking the
+metadata of manifests and exact source files. Changes require full validation
+before selection; a failed or busy source produces partial coverage, rather
+than serving its previous selection. The default bound is 2,000 manifests.
+Its optional host writer lock is read-only and non-blocking. Owner receiver
+resolvers may add native facts for a dedicated local integration; explicit
+remote target configuration must take precedence over those host facts.

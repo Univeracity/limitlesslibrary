@@ -65,6 +65,21 @@ def no_service():
     raise AssertionError("local selection must not connect to the service")
 
 
+def test_oversized_utf8_policy_cannot_replace_a_usable_saved_policy(tmp_path: Path) -> None:
+    path = tmp_path / "query-policy.json"
+    policy = default_query_policy()
+    save_query_policy(path, policy)
+    original = path.read_bytes()
+    large = {
+        **policy,
+        "localReceiver": {"constraints": [f"{index:02d}" + "界" * 198 for index in range(32)], "toolchain": {}},
+    }
+    with pytest.raises(QueryPolicyError, match="byte limit"):
+        save_query_policy(path, large)
+    assert path.read_bytes() == original
+    assert load_query_policy(path) == policy
+
+
 def test_objective_uses_private_capture_and_keeps_a_recoverable_local_binding(tmp_path: Path) -> None:
     captured = capture(tmp_path / "methods")
     view = engine(tmp_path, connector_factory=no_service).check({"objective": "Verify observed adoption"})

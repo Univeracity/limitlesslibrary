@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Preserve stored records when rejecting oversized UTF-8 query policy. New
+  captures remain within original readers' byte bound; older oversized captures
+  can be read without rewriting their identities or guidance.
+
+- Host integrations can use read-only catalog snapshots that refresh after
+  method revisions, retirement, or exact source changes. A damaged optional
+  source cannot produce a stale selection; independently valid captures remain
+  available with partial coverage.
+
 - Add an objective-only MCP/CLI query route with a separate saved service-search
   policy, host-owned receiver configuration, visible search coverage, and private
   continuations. Existing structured tools and signed service contracts remain

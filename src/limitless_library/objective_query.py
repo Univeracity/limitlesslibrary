@@ -97,12 +97,14 @@ class ObjectiveQueryEngine:
         policy_path: Path | None,
         state_dir: Path | None,
         connector_factory: Callable[[], ServiceConnector] = activated_service_connector,
+        receiver_resolver: Callable[[dict[str, Any]], tuple[dict[str, Any], dict[str, Any]]] = resolve_receivers,
         now: Callable[[], str] = utc_now,
     ):
         self.catalog = catalog
         self.policy_path = policy_path
         self.state_dir = state_dir
         self._factory = connector_factory
+        self._receiver_resolver = receiver_resolver
         self._now = now
         self._connector: ServiceConnector | None = None
         self._service_profile_digest: str | None = None
@@ -127,7 +129,7 @@ class ObjectiveQueryEngine:
             if not objective:
                 raise ObjectiveQueryError("objective must contain text")
             policy = load_query_policy(self.policy_path)
-            receiver, service_receiver = resolve_receivers(policy)
+            receiver, service_receiver = self._receiver_resolver(policy)
         except (SchemaError, QueryPolicyError) as error:
             raise ObjectiveQueryError(str(error)) from error
         evaluated_at = self._now()

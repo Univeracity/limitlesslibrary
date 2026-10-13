@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from limitless_library.catalog import CatalogError, LocalCatalog
-from limitless_library.contracts import canonical_json_bytes, load_json
+from limitless_library.contracts import canonical_json_bytes, load_json, sha256_json
 from limitless_library.mcp_protocol import modern_metadata
 from limitless_library.mcp_server import OBJECTIVE_TOOL_NAME, REGISTER_METHOD_TOOL_NAME, TOOL_NAME, _dispatcher
 from limitless_library.method_capture import (
@@ -22,6 +22,7 @@ from limitless_library.method_capture import (
     register_method,
     sync_methods,
 )
+from limitless_library.method_projection import project_method_capsule
 from limitless_library.publication import PublicationError, _new_state, _source_descriptor
 from limitless_library.service_contracts import validate_source_free_method
 from limitless_library.service_identity import InstallationSigner
@@ -52,6 +53,125 @@ def _call(name: str, arguments: dict) -> dict:
             "_meta": modern_metadata(client_name="method-test", client_version="1"),
         },
     }
+
+
+def large_method() -> dict:
+    value = _method()
+    value["method"] = {
+        "summary": "Receiver verification",
+        "steps": [
+            {"index": index + 1, "instruction": "界" * 400, "check": "fact-present", "expected": "界" * 240}
+            for index in range(16)
+        ],
+        "constraints": [f"{index:02d}" + "界" * 238 for index in range(16)],
+        "evaluation": [f"{index:02d}" + "界" * 238 for index in range(16)],
+        "limitations": [f"{index:02d}" + "界" * 238 for index in range(16)],
+    }
+    validate_source_free_method(value["method"])
+    return value
+
+
+def test_new_capture_never_creates_records_original_installed_readers_cannot_read(tmp_path: Path) -> None:
+    store = tmp_path / "methods"
+    with pytest.raises(MethodCaptureError, match="64 KiB"):
+        register_method(store, large_method())
+    assert not store.exists()
+
+
+def test_previously_written_large_capture_can_be_recovered_without_rewriting_it(tmp_path: Path) -> None:
+    value = large_method()
+    record_digest = sha256_json(value)
+    store = tmp_path / "methods"
+    directory = store / record_digest[7:]
+    directory.mkdir(parents=True, mode=0o700)
+    store.chmod(0o700)
+    (store / ".register.lock").touch(mode=0o600)
+    capture = (
+        canonical_json_bytes(
+            {"schemaVersion": "limitless.method-capture/0.1", "methodRef": "method:" + record_digest[7:], **value}
+        )
+        + b"\n"
+    )
+    assert 64 * 1024 < len(capture) < 128 * 1024
+    method = canonical_json_bytes(value["method"]) + b"\n"
+    (directory / "capture.json").write_bytes(capture)
+    (directory / "method.json").write_bytes(method)
+    (directory / "capture.json").chmod(0o600)
+    (directory / "method.json").chmod(0o600)
+    projected = captured_method_capsules(store)
+    assert len(projected) == 1
+    guidance = projected[0]["offers"][0]["method"]
+    assert len(guidance["steps"]) == 16 and len(guidance["verification"]) == 48
+    assert (directory / "capture.json").read_bytes() == capture
+    assert (directory / "method.json").read_bytes() == method
+
+
+def test_higher_priority_capture_cannot_replace_a_working_legacy_catalog_selection(tmp_path: Path) -> None:
+    root = tmp_path / "catalog"
+    directory = root / "baseline"
+    directory.mkdir(parents=True)
+    baseline = project_method_capsule(
+        capsule_id="capsule:receiver-baseline",
+        offer_id="offer:receiver-baseline",
+        version="1.0.0",
+        title="Known receiver baseline",
+        task_kind="receiver-verification",
+        method={
+            "summary": "Record receiver startup.",
+            "steps": ["Inspect receiver startup."],
+            "verification": ["Receiver startup is observed."],
+        },
+        compatibility={"constraints": ["linux"], "toolchain": {}},
+        priority=100,
+    )
+    (directory / "capsule.json").write_bytes(canonical_json_bytes(baseline))
+    catalog = LocalCatalog(root)
+    request = {
+        "schemaVersion": "limitless.query/0.1",
+        "taskKind": "receiver-verification",
+        "receiver": {"constraints": ["linux"], "toolchain": {}},
+        "requestedUse": "instantiate",
+        "tenantScope": "private",
+        "evaluatedAt": "2026-10-13T04:00:00Z",
+    }
+    original = catalog.query(request)
+    store = tmp_path / "methods"
+    register_method(store, _method())
+    combined = CapturedMethodCatalog(catalog, store)
+    assert combined.query(request) == original
+    modern, complete = combined.query_objective(
+        "Verify observed adoption",
+        receiver=request["receiver"],
+        requested_uses=("instantiate",),
+        tenant_scopes=("private",),
+        evaluated_at=request["evaluatedAt"],
+    )
+    assert complete and modern["decision"]["selected"]["offer"]["id"].startswith("offer:captured.")
+
+
+def test_damaged_optional_store_preserves_legacy_abstention_and_reports_partial_modern_coverage(tmp_path: Path) -> None:
+    catalog = LocalCatalog.empty(tmp_path)
+    store = tmp_path / "methods"
+    captured = register_method(store, _method())
+    (store / captured["methodRef"][7:] / "capture.json").write_text("{}")
+    combined = CapturedMethodCatalog(catalog, store)
+    request = {
+        "schemaVersion": "limitless.query/0.1",
+        "taskKind": "receiver-verification",
+        "receiver": {"constraints": ["linux"], "toolchain": {}},
+        "requestedUse": "instantiate",
+        "tenantScope": "private",
+        "evaluatedAt": "2026-10-13T04:00:00Z",
+    }
+    assert combined.query(request) == catalog.query(request)
+    match, complete = combined.query_objective(
+        "Observed adoption",
+        receiver=request["receiver"],
+        requested_uses=("instantiate",),
+        tenant_scopes=("private",),
+        evaluated_at=request["evaluatedAt"],
+    )
+    assert match is None and not complete
 
 
 def test_generic_mcp_keeps_query_first_and_registers_one_local_method(tmp_path: Path) -> None:
@@ -327,8 +447,19 @@ def test_query_rejects_changed_capture_or_method_bytes(tmp_path: Path, tamper: s
         (folder / "method.json").symlink_to(ROOT / "examples/publication/method.json")
     dispatcher = _dispatcher(LocalCatalog(CATALOG), method_store=store)
     response = dispatcher.handle(_call(TOOL_NAME, _captured_query()))
-    assert response["result"]["isError"] is True
-    assert "selected" not in response["result"].get("structuredContent", {})
+    assert response["result"]["isError"] is False
+    assert response["result"]["structuredContent"] == LocalCatalog(CATALOG).query(_captured_query())
+    with pytest.raises(MethodCaptureError):
+        captured_method_capsules(store)
+    request = _captured_query()
+    match, complete = CapturedMethodCatalog(LocalCatalog(CATALOG), store).query_objective(
+        request["objective"],
+        receiver=request["receiver"],
+        requested_uses=(request["requestedUse"],),
+        tenant_scopes=(request["tenantScope"],),
+        evaluated_at=request["evaluatedAt"],
+    )
+    assert match is None and not complete
 
 
 def test_query_does_not_wait_on_a_registration_writer(tmp_path: Path) -> None:
@@ -398,5 +529,6 @@ def test_warm_snapshot_refreshes_after_capture_and_detects_tampering(
     data = method_file.read_bytes()
     method_file.write_bytes(data.replace(b"receiver", b"Receiver", 1))
     os.utime(method_file, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    assert snapshot.query(_captured_query())["decision"] == "abstain"
     with pytest.raises(MethodCaptureError, match="digest-bound"):
-        snapshot.query(_captured_query())
+        captured_method_capsules(store)

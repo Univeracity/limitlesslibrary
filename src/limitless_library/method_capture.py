@@ -10,7 +10,7 @@ import secrets
 import stat
 import subprocess  # nosec B404
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -30,6 +30,8 @@ _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _METHOD_REF = re.compile(r"^method:([0-9a-f]{64})$")
 _PLATFORM = re.compile(r"^(?:any|[a-z][a-z0-9._-]{0,63})$")
 _MAX_RECORDS = 2000
+_MAX_SHARED_CAPTURE_BYTES = 64 * 1024
+_MAX_RECOVERED_CAPTURE_BYTES = 128 * 1024
 
 
 class MethodCaptureError(ValueError):
@@ -83,7 +85,7 @@ def _write_new(path: Path, payload: bytes) -> None:
         os.close(descriptor)
 
 
-def _read(path: Path, maximum: int = 64 * 1024) -> bytes:
+def _read(path: Path, maximum: int = _MAX_RECOVERED_CAPTURE_BYTES) -> bytes:
     before = path.lstat()
     if (
         not stat.S_ISREG(before.st_mode)
@@ -198,7 +200,7 @@ def _capture_folders(store_path: Path) -> Iterator[list[Path]]:
         yield []
         return
     try:
-        lock = os.open(lock_path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0))
+        lock = os.open(lock_path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0))
     except OSError as error:
         raise MethodCaptureError("method store lock is unavailable") from error
     try:
@@ -278,11 +280,27 @@ def _capture_fingerprint(store_path: Path) -> tuple:
 class CapturedMethodCatalog:
     """Refresh private captures in one MCP process; preserve existing decisions."""
 
-    def __init__(self, catalog: LocalCatalog, store_path: Path | None):
+    def __init__(
+        self,
+        catalog: LocalCatalog,
+        store_path: Path | None,
+        *,
+        catalog_source: Callable[[], LocalCatalog] | None = None,
+    ):
         self.catalog = catalog
         self.store_path = store_path
         self._fingerprint: tuple | None = None
         self._combined = catalog
+        self._catalog_source = catalog_source
+        self._fallback: CapturedMethodCatalog | None = None
+
+    def _refresh_base(self) -> None:
+        if self._catalog_source is not None:
+            catalog = self._catalog_source()
+            if catalog is not self.catalog:
+                self.catalog = self._combined = catalog
+                self._fingerprint = None
+            self._fallback = None
 
     def _refresh(self) -> LocalCatalog:
         if self.store_path is not None:
@@ -295,6 +313,15 @@ class CapturedMethodCatalog:
 
     def query_objective(self, objective: str, **options: Any) -> tuple[dict[str, Any] | None, bool]:
         """Return one match and whether the optional private store was complete."""
+        try:
+            self._refresh_base()
+        except CatalogError:
+            # Never serve stale base material, but independently valid private
+            # captures remain usable with visibly incomplete local coverage.
+            if self._fallback is None:
+                self._fallback = CapturedMethodCatalog(LocalCatalog.empty(self.catalog.root), self.store_path)
+            match, _ = self._fallback.query_objective(objective, **options)
+            return match, False
         try:
             match = self._refresh().query_objective(objective, **options)
         except (MethodCaptureError, CatalogError):
@@ -314,27 +341,26 @@ class CapturedMethodCatalog:
         return match, True
 
     def query(self, request: dict[str, Any]) -> dict[str, Any]:
+        self._refresh_base()
         original = self.catalog.query(request)
-        if self.store_path is None:
+        if self.store_path is None or original["selected"] is not None:
+            # The original tool queries the configured catalog. Newly captured
+            # work must not replace a working legacy selection or its binding;
+            # the additive objective route ranks across both sources.
             return original
         try:
             decision = self._refresh().query(request)
         except (MethodCaptureError, CatalogError):
-            # A damaged optional capture store must not disable a valid existing
-            # catalog selection. No unvalidated capture is used in this path.
-            if original["selected"] is not None:
-                return original
-            raise
-        # Existing CLI adopters validate against their unchanged source catalog.
-        # Added private captures cannot change that decision's catalog binding
-        # when the selected work itself has not changed.
-        return original if decision["selected"] == original["selected"] else decision
+            # Keep the original decision shape and source binding, including
+            # abstention. The new route separately reports partial coverage.
+            return original
+        return decision
 
 
 def query_with_captured_methods(
     catalog: LocalCatalog, request: dict[str, Any], store_path: Path | None
 ) -> dict[str, Any]:
-    """Select across existing capsules and private captures using one decision law."""
+    """Preserve a valid legacy catalog selection; otherwise try private captures."""
     return CapturedMethodCatalog(catalog, store_path).query(request)
 
 
@@ -371,6 +397,12 @@ def register_method(
     ):
         raise MethodCaptureError("public method sharing requires an exact reviewed policy digest")
     checked = _input(value)
+    capture_digest = sha256_json(checked)
+    payload = _capture_payload(checked, "method:" + capture_digest[7:])
+    if len(payload) > _MAX_SHARED_CAPTURE_BYTES:
+        # Original installed readers use this same 64 KiB boundary. Do not
+        # create new shared records they cannot consume, or shorten guidance.
+        raise MethodCaptureError("method exceeds the 64 KiB shared capture limit; use a more focused method")
     store = _directory(store_path)
     import fcntl
 
@@ -382,6 +414,13 @@ def register_method(
         return _register_locked(store, checked, public_policy_digest, schedule)
     finally:
         os.close(lock)
+
+
+def _capture_payload(checked: dict[str, Any], reference: str) -> bytes:
+    return (
+        canonical_json_bytes({"schemaVersion": "limitless.method-capture/0.1", "methodRef": reference, **checked})
+        + b"\n"
+    )
 
 
 def _register_locked(
@@ -397,10 +436,7 @@ def _register_locked(
     if folder.is_symlink() or folder.stat().st_mode & 0o077 or folder.stat().st_uid != os.geteuid():
         raise MethodCaptureError("method record directory is unsafe")
     method_payload = canonical_json_bytes(checked["method"]) + b"\n"
-    capture_payload = (
-        canonical_json_bytes({"schemaVersion": "limitless.method-capture/0.1", "methodRef": reference, **checked})
-        + b"\n"
-    )
+    capture_payload = _capture_payload(checked, reference)
     for name, payload in (("capture.json", capture_payload), ("method.json", method_payload)):
         path = folder / name
         if path.exists():
