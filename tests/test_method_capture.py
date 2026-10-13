@@ -506,6 +506,21 @@ def test_existing_exact_decision_keeps_its_original_catalog_binding(tmp_path: Pa
     assert query_with_captured_methods(catalog, request, store) == original
 
 
+def test_unrelated_capture_preserves_the_complete_legacy_abstention(tmp_path: Path) -> None:
+    catalog = LocalCatalog(CATALOG)
+    request = load_json(ROOT / "examples/requests/abstain.json")
+    original = catalog.query(request)
+    assert original["selected"] is None
+    store = tmp_path / "methods"
+    register_method(store, _method())
+    before = {p.relative_to(store): p.read_bytes() for p in store.rglob("*") if p.is_file()}
+    snapshot = CapturedMethodCatalog(catalog, store)
+    assert snapshot.query(request) == original
+    assert snapshot.query(request) == original
+    catalog.validate_decision(snapshot.query(request), request=request)
+    assert before == {p.relative_to(store): p.read_bytes() for p in store.rglob("*") if p.is_file()}
+
+
 def test_warm_snapshot_refreshes_after_capture_and_detects_tampering(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -75,10 +75,11 @@ produce one search candidate while retaining their separate original records.
 An in-process snapshot refreshes when capture files change. Its fingerprint
 includes inode, size, modification time, change time, and mode, and is checked
 under a non-blocking shared registration lock. Changed or malformed captures
-are not selected. A valid existing catalog selection remains available if the
-optional capture store fails validation. Otherwise the tool reports an error.
-If the selected work is unchanged, the original catalog decision is returned
-byte-for-byte so existing CLI adopters can still validate its binding.
+are not selected. A valid existing catalog decision remains available if the
+optional capture store fails validation. Unrelated captures preserve the
+original abstention; only an actual captured match fills it. If the selected
+work is unchanged, the original catalog decision is returned byte-for-byte so
+existing CLI adopters can still validate its binding.
 
 The original Python connectors (`0.1.0a0` and `0.1.0a1`) require a sole-tool
 discovery response. Their advertised client metadata selects that compatible

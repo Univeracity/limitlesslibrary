@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Run unchanged original clients against candidate MCP source in CI. Preserve
+  the complete legacy abstention when unrelated new captures supply no match.
+- Add optional original Omarchy draft and revision interoperability checks in
+  both directions, with original settings, records, and sharing state retained.
+
 - Share immutable draft registration, revision lineage, idempotent retry, and
   projection recovery with host integrations. Original native draft records
   and capsule digests remain unchanged.

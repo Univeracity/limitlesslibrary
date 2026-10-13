@@ -354,7 +354,9 @@ class CapturedMethodCatalog:
             # Keep the original decision shape and source binding, including
             # abstention. The new route separately reports partial coverage.
             return original
-        return decision
+        # Unrelated new captures must not alter a legacy abstention's binding.
+        # Only an actual captured match extends the original query decision.
+        return decision if decision["selected"] is not None else original
 
 
 def query_with_captured_methods(
