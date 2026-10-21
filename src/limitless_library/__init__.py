@@ -1,6 +1,6 @@
 """Public API for the Limitless Library local alpha."""
 
-__version__ = "0.1.0a1"
+__version__ = "0.1.0a2"
 
 from .agent_integration import (
     AGENT_IDS,

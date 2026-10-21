@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0a2 - Unreleased
+
+- Anchor exact-component installation to receiver directory descriptors, reject
+  writable-by-other-user parents, and resolve every target component without
+  following symlinks. This closes the parent-directory swap window while
+  preserving existing recipes, receipts, and service contracts.
+
 ## 0.1.0a1 - 2026-10-10
 
 - Published alpha packages and release checksums.

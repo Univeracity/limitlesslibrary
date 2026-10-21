@@ -85,6 +85,43 @@ def test_existing_receiver_file_is_never_overwritten(tmp_path: Path) -> None:
     assert target.read_text() == "receiver-owned\n"
 
 
+def test_symlinked_target_parent_is_rejected_without_writing_outside_receiver(tmp_path: Path) -> None:
+    receiver = _receiver(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (receiver / "_vendor").symlink_to(outside, target_is_directory=True)
+    catalog = LocalCatalog(CATALOG_PATH)
+
+    with pytest.raises(AdoptionError, match="unsafe parent"):
+        adopt_exact_component(
+            catalog,
+            _decision(catalog),
+            load_json(receiver / "recipe.json"),
+            receiver,
+            owner_authorized=True,
+        )
+
+    assert list(outside.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX ownership and mode checks")
+def test_group_writable_receiver_is_rejected_before_install(tmp_path: Path) -> None:
+    receiver = _receiver(tmp_path)
+    receiver.chmod(0o777)
+    catalog = LocalCatalog(CATALOG_PATH)
+
+    with pytest.raises(AdoptionError, match="group- or world-writable"):
+        adopt_exact_component(
+            catalog,
+            _decision(catalog),
+            load_json(receiver / "recipe.json"),
+            receiver,
+            owner_authorized=True,
+        )
+
+    assert not (receiver / "_vendor").exists()
+
+
 def test_adherence_failure_rolls_back_new_files(tmp_path: Path) -> None:
     receiver = _receiver(tmp_path)
     receiver.joinpath("app.py").write_text("def render(name: str) -> str:\n    return f'Hello, {name.strip()}!'\n")

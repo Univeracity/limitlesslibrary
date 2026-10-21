@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import os
 import stat
 from pathlib import Path
@@ -13,7 +14,6 @@ from .contracts import (
     ContractError,
     regular_file_under,
     relative_path,
-    safe_destination,
     sha256_file,
     sha256_json,
     tree_digest,
@@ -105,48 +105,147 @@ def _real_receiver(receiver: Path) -> Path:
     return receiver.resolve()
 
 
-def _make_parent_directories(receiver: Path, destination: Path, created: list[Path]) -> None:
-    missing: list[Path] = []
-    current = destination.parent
-    while current != receiver and not current.exists() and not current.is_symlink():
-        missing.append(current)
-        current = current.parent
-    if current != receiver:
-        info = current.lstat()
-        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
-            raise AdoptionError("installation target parent is unsafe")
-    for directory in reversed(missing):
+def _directory_flags() -> int:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+    return flags | getattr(os, "O_NOFOLLOW", 0)
+
+
+def _check_private_directory(descriptor: int, label: str) -> None:
+    info = os.fstat(descriptor)
+    if not stat.S_ISDIR(info.st_mode):
+        raise AdoptionError(f"{label} is not a directory")
+    if os.name == "posix":
+        import grp
+        import pwd
+
+        if info.st_uid != os.geteuid():
+            raise AdoptionError(f"{label} must be owned by the current user")
+        mode = stat.S_IMODE(info.st_mode)
+        group_users = {
+            account.pw_uid for account in pwd.getpwall() if account.pw_gid == info.st_gid
+        }
         try:
-            directory.mkdir(mode=0o755)
-        except FileExistsError:
-            info = directory.lstat()
-            if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
-                raise AdoptionError("installation target parent changed during installation")
-        else:
-            created.append(directory)
+            group_users.update(pwd.getpwnam(name).pw_uid for name in grp.getgrgid(info.st_gid).gr_mem)
+        except KeyError:
+            pass
+        if mode & 0o002 or mode & 0o020 and any(user != os.geteuid() for user in group_users):
+            raise AdoptionError(f"{label} must not be group- or world-writable")
 
 
-def _install_file(source: Path, destination: Path) -> None:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+def _open_receiver(receiver: Path) -> int:
+    before = receiver.lstat()
+    try:
+        descriptor = os.open(receiver, _directory_flags())
+    except OSError as error:
+        raise AdoptionError("receiver cannot be opened safely") from error
+    try:
+        after = os.fstat(descriptor)
+        if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+            raise AdoptionError("receiver changed while it was opened")
+        _check_private_directory(descriptor, "receiver")
+        return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def _open_parent_beneath(
+    receiver_descriptor: int,
+    target: str,
+    created_directories: list[tuple[int, str]],
+    *,
+    create: bool = True,
+) -> tuple[int, str]:
+    parts = relative_path(target, "installation target").parts
+    current = os.dup(receiver_descriptor)
+    try:
+        for index, part in enumerate(parts[:-1]):
+            try:
+                child = os.open(part, _directory_flags(), dir_fd=current)
+            except FileNotFoundError:
+                if not create:
+                    raise AdoptionError(f"installation target parent is unavailable: {target}")
+                try:
+                    os.mkdir(part, mode=0o700, dir_fd=current)
+                except FileExistsError:
+                    pass
+                else:
+                    created_directories.append((os.dup(current), part))
+                try:
+                    child = os.open(part, _directory_flags(), dir_fd=current)
+                except OSError as error:
+                    raise AdoptionError(
+                        f"installation target parent changed during installation: {'/'.join(parts[: index + 1])}"
+                    ) from error
+            except OSError as error:
+                raise AdoptionError(f"installation target has an unsafe parent: {target}") from error
+            try:
+                _check_private_directory(child, f"installation target parent {'/'.join(parts[: index + 1])}")
+            except Exception:
+                os.close(child)
+                raise
+            os.close(current)
+            current = child
+        return current, parts[-1]
+    except Exception:
+        os.close(current)
+        raise
+
+
+def _install_file(source: Path, parent_descriptor: int, name: str, target: str) -> str:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
     try:
         # Exact components may contain private receiver material. The bundle
         # binds bytes, not a permission mode, so default new files to the
         # narrowest useful owner-only permissions.
-        descriptor = os.open(destination, flags, 0o600)
+        descriptor = os.open(name, flags, 0o600, dir_fd=parent_descriptor)
     except OSError as error:
-        raise AdoptionError(f"cannot create exact installation target: {destination}") from error
+        if isinstance(error, FileExistsError):
+            raise AdoptionError(f"refusing to overwrite receiver path: {target}") from error
+        raise AdoptionError(f"cannot create exact installation target: {target}") from error
+    installed_digest = hashlib.sha256()
     try:
         with source.open("rb") as input_handle, os.fdopen(descriptor, "wb") as output_handle:
             descriptor = -1
             for block in iter(lambda: input_handle.read(1024 * 1024), b""):
                 output_handle.write(block)
+                installed_digest.update(block)
             output_handle.flush()
             os.fsync(output_handle.fileno())
+    except Exception:
+        try:
+            os.unlink(name, dir_fd=parent_descriptor)
+        except OSError:
+            pass
+        raise
     finally:
         if descriptor != -1:
             os.close(descriptor)
+    return "sha256:" + installed_digest.hexdigest()
+
+
+def _sha256_beneath(receiver_descriptor: int, target: str) -> str:
+    parent, name = _open_parent_beneath(receiver_descriptor, target, [], create=False)
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(name, flags, dir_fd=parent)
+    except OSError as error:
+        os.close(parent)
+        raise AdoptionError(f"installed target is unavailable or unsafe: {target}") from error
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise AdoptionError(f"installed target is not a regular file: {target}")
+        value = hashlib.sha256()
+        with os.fdopen(descriptor, "rb") as handle:
+            descriptor = -1
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                value.update(block)
+        return "sha256:" + value.hexdigest()
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+        os.close(parent)
 
 
 def _validate_verifier_result(result: dict[str, Any], verifier: dict[str, Any], asset_digest: str) -> None:
@@ -197,29 +296,33 @@ def adopt_exact_component(
         raise AdoptionError("recipe must map every exact source exactly once")
     capsule_root = catalog.selected_capsule_root(decision)
     file_by_source = {item["source"]: item for item in offer["files"]}
-    prepared: list[tuple[dict[str, str], Path, Path]] = []
+    prepared: list[tuple[dict[str, str], Path, str]] = []
     for mapping in recipe["mappings"]:
         try:
             source = regular_file_under(capsule_root, mapping["source"], "capsule source")
-            destination = safe_destination(receiver, mapping["target"])
+            relative_path(mapping["target"], "installation target")
         except ContractError as error:
             raise AdoptionError(str(error)) from error
         declared = file_by_source[mapping["source"]]
         if sha256_file(source) != declared["digest"]:
             raise AdoptionError(f"capsule source changed: {mapping['source']}")
-        prepared.append((mapping, source, destination))
+        prepared.append((mapping, source, mapping["target"]))
     if receipt_path is not None and Path(receipt_path).exists():
         raise AdoptionError(f"refusing to overwrite adoption receipt: {receipt_path}")
 
-    created_files: list[Path] = []
-    created_directories: list[Path] = []
+    receiver_descriptor = _open_receiver(receiver)
+    created_files: list[tuple[int, str]] = []
+    created_directories: list[tuple[int, str]] = []
     try:
         installed: list[dict[str, str]] = []
-        for mapping, source, destination in prepared:
-            _make_parent_directories(receiver, destination, created_directories)
-            _install_file(source, destination)
-            created_files.append(destination)
-            digest = sha256_file(destination)
+        for mapping, source, target in prepared:
+            parent, name = _open_parent_beneath(receiver_descriptor, target, created_directories)
+            try:
+                digest = _install_file(source, parent, name, target)
+            except Exception:
+                os.close(parent)
+                raise
+            created_files.append((parent, name))
             if digest != file_by_source[mapping["source"]]["digest"]:
                 raise AdoptionError(f"installed bytes differ: {mapping['target']}")
             installed.append({"source": mapping["source"], "target": mapping["target"], "digest": digest})
@@ -238,7 +341,7 @@ def adopt_exact_component(
                 }
             )
         for item in installed:
-            if sha256_file(regular_file_under(receiver, item["target"], "installed target")) != item["digest"]:
+            if _sha256_beneath(receiver_descriptor, item["target"]) != item["digest"]:
                 raise AdoptionError(f"installed bytes changed during verification: {item['target']}")
         receipt = {
             "schemaVersion": "limitless.adoption-receipt/0.1",
@@ -269,15 +372,26 @@ def adopt_exact_component(
             raise AdoptionError(str(error)) from error
         if receipt_path is not None:
             write_new_json(Path(receipt_path), receipt)
+        for descriptor, _name in created_files:
+            os.close(descriptor)
+        for descriptor, _name in created_directories:
+            os.close(descriptor)
+        os.close(receiver_descriptor)
         return receipt
-    except (AdoptionError, CatalogError, ContractError, SandboxError) as error:
-        for path in reversed(created_files):
-            path.unlink(missing_ok=True)
-        for directory in reversed(created_directories):
+    except (AdoptionError, CatalogError, ContractError, OSError, SandboxError) as error:
+        for descriptor, name in reversed(created_files):
             try:
-                directory.rmdir()
+                os.unlink(name, dir_fd=descriptor)
             except OSError:
                 pass
+            os.close(descriptor)
+        for descriptor, name in reversed(created_directories):
+            try:
+                os.rmdir(name, dir_fd=descriptor)
+            except OSError:
+                pass
+            os.close(descriptor)
+        os.close(receiver_descriptor)
         if isinstance(error, AdoptionError):
             raise
         raise AdoptionError(str(error)) from error
